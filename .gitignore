@@ -207,5 +207,7 @@ build/gtest/googletest/CMakeFiles/gtest_main.dir/DependInfo.cmake
 build/gtest/googletest/CMakeFiles/gtest_main.dir/flags.make
 build/gtest/googletest/CMakeFiles/gtest_main.dir/link.txt
 build/gtest/googletest/CMakeFiles/gtest_main.dir/progress.make
+build/*
+src/mesh_nav_ros/__pycache__/*
 .vscode/c_cpp_properties.json
 .vscode/settings.json
