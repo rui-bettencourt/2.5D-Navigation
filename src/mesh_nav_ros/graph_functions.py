@@ -33,7 +33,7 @@ class GraphManager(object):
 
     def plan(self, start_point, end_point):
         # Find the nearest nodes in the graph to these coordinates
-        start_node = self.world_to_graph(start_point)
+        start_node = self.world_to_graph(start_point[:3])
         end_node = self.world_to_graph(end_point)
         print(start_node, end_node)
 
@@ -59,7 +59,7 @@ class GraphManager(object):
             for i in range(len(path)):
                 position = np.asarray(self.graph_to_world(path[i]))
                 if i == 0:
-                    orientation = 0.0  # Initial orientation can be set to 0.0 or any default value
+                    orientation = start_point[3]  # Initial orientation can be set to 0.0 or any default value
                 else:
                     prev_position = np.asarray(self.graph_to_world(path[i - 1]))
                     delta = position - prev_position

@@ -122,7 +122,7 @@ def is_colliding_fcl_octomap(mesh_robot, env):
 def is_colliding_o3d(robot_mesh, obstacle_mesh):
     start_time = time.time()
     intersect = robot_mesh.is_intersecting(obstacle_mesh)
-    print("O3d - Intersecting: " + str(intersect) + " | Took " + str(time.time()-start_time) + " s")
+    # print("O3d - Intersecting: " + str(intersect) + " | Took " + str(time.time()-start_time) + " s")
     return intersect
 
 

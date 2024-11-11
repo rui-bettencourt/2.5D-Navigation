@@ -1,41 +1,73 @@
 #!/usr/bin/env python
 import rospy
 import rospkg
+import logging
 from sensor_msgs.msg import JointState
+from nav_msgs.msg import Odometry
 from urdf_parser_py.urdf import URDF, Mesh
 import open3d as o3d
 import numpy as np
 import tf
+import tf.transformations
 from copy import deepcopy
+
+class Pose(object):
+    def __init__(self, position=[0.0, 0.0, 0.0], orientation=0.0, joints={}):
+        self.x = position[0]
+        self.y = position[1]
+        self.z = position[2]
+        self.theta = orientation
+        self.joints = joints
+
+    def get_full_pose(self):
+        return [self.x, self.y, self.z, self.theta] + self.joints
+
+    def get_position(self):
+        return [self.x, self.y, self.z]
+
+    def get_pose(self):
+        return [self.x, self.y, self.z, self.theta]
+
+    def update_pose(self, pose):
+        self.x = pose[0]
+        self.y = pose[1]
+        self.z = pose[2]
+        self.theta = pose[3]
+
+    def update_joints(self, joints):
+        self.joints = joints
+
 
 class RobotMeshState(object):
     def __init__(self):
         try:
-            # Redirect stderr to suppress warnings from Open3D
-            # stderr_fd = sys.stderr.fileno()
-            # devnull_fd = os.open(os.devnull, os.O_WRONLY)
-            # os.dup2(devnull_fd, stderr_fd)
-
             # Load the URDF model
             self.robot = URDF.from_parameter_server()
-            # Restore stderr
-            # os.dup2(stderr_fd, devnull_fd)
-            # os.close(devnull_fd)
         except Exception as e:
             rospy.logwarn(f"Failed to load urdf. Make sure this is a node and the robot/simulation is running")
             exit()
 
-        ## Subscriptions
-        rospy.Subscriber("/joint_states", JointState, self.joint_states_callback, queue_size = 1)
+        #########Configs
+        joint_states_topic = "/joint_states"
+        pose_odom_topic = "/ground_truth_odom"
+        joints = ['arm_1_joint', 'arm_2_joint', 'arm_3_joint', 'arm_4_joint', 'arm_5_joint', 'arm_6_joint', 'arm_7_joint']#, 'torso_lift_joint']
+        robot_base_link = 'base_link'
+        ##############
 
         ## variables
         self.robot_mesh = None
+        self.robot_state = Pose()
         self.robot_bbs = {}
         self.robot_mesh_bb = self.simplify_robot_mesh()
         self.whitelist_joints_connections = {'arm_6_link': 'gripper_link'}
-        self.base_link = 'base_link'
+        self.base_link = robot_base_link
+        self.robot_joints = joints
         self.eliminate_nested_bounding_boxes()
         self.robot_joint_positions = None
+
+        ## Subscriptions later change this to be configurable on launch file
+        rospy.Subscriber(joint_states_topic, JointState, self.joint_states_callback, queue_size = 1)
+        rospy.Subscriber(pose_odom_topic, Odometry, self.odom_callback, queue_size = 1)
 
     def resolve_package_uri(self, uri):
         if uri.startswith("package://"):
@@ -58,7 +90,6 @@ class RobotMeshState(object):
         meshes = []
         listener = tf.TransformListener()
         for link in self.robot.links:
-
             if link.name == self.robot.get_root():
                 continue
 
@@ -316,11 +347,36 @@ class RobotMeshState(object):
         return vol
 
     def joint_states_callback(self, msg):
+        # get all joints in a dict
         self.robot_joint_positions = dict(zip(msg.name, msg.position))
+        # get only the joints we can/want to control
+        joints = {joint_name: position for joint_name, position in self.robot_joint_positions.items() if joint_name in self.robot_joints}
+        # update the state of the robot
+        self.robot_state.update_joints(joints)
         # full robot mesh
         self.robot_mesh = self.update_robot_pose_and_convert_to_mesh()
         #update only relevant joints
         # print("Number of vertices: " + str(len(self.robot_mesh.vertices)) + "; Number of triangles: " +str((self.robot_mesh.triangles)))
+
+    def odom_callback(self, msg):
+        """
+        Callback function for the odometry message.
+
+        Args:
+            msg (Odometry): The odometry message containing the robot's pose.
+
+        Returns:
+            None
+        """
+        # Extract orientation quaternion
+        orientation_q = msg.pose.pose.orientation
+        quaternion = [orientation_q.x, orientation_q.y, orientation_q.z, orientation_q.w]
+        
+        # Convert quaternion to Euler angles
+        yaw = tf.transformations.euler_from_quaternion(quaternion)[2]
+
+        pose = [msg.pose.pose.position.x, msg.pose.pose.position.y, msg.pose.pose.position.z, yaw]
+        self.robot_state.update_pose(pose)
 
     def save_mesh(self, filename):
         while not rospy.is_shutdown():
@@ -333,4 +389,5 @@ if __name__ == '__main__':
     rospy.init_node('debug_mesh', anonymous=True)
     path = '/home/rui/ds/testbed/'
     mc = RobotMeshState()
-    mc.save_mesh(path+'test.ply')
+    # mc.save_mesh(path+'test.ply')
+    rospy.spin()
