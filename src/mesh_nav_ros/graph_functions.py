@@ -35,24 +35,24 @@ class GraphManager(object):
         # Find the nearest nodes in the graph to these coordinates
         start_node = self.world_to_graph(start_point[:3])
         end_node = self.world_to_graph(end_point)
-        print(start_node, end_node)
+        # print(start_node, end_node)
 
         # Find the shortest path between the start and end nodes
         try:
             path = nx.shortest_path(self.G, source=start_node, target=end_node, weight='weight', method='dijkstra')
-            print("Shortest path:", path)
+            # print("Shortest path:", path)
             
             # Plot the graph with the path highlighted (2D projection for visualization)
-            pos = {i: (self.__Gpoints[i][0], self.__Gpoints[i][1]) for i in self.G.nodes()}
+            # pos = {i: (self.__Gpoints[i][0], self.__Gpoints[i][1]) for i in self.G.nodes()}
 
-            plt.figure()
-            nx.draw(self.G, pos, with_labels=True, node_size=50, node_color="red", edge_color="blue")
+            # plt.figure()
+            # nx.draw(self.G, pos, with_labels=True, node_size=50, node_color="red", edge_color="blue")
 
-            # Highlight the path
-            path_edges = list(zip(path, path[1:]))
-            nx.draw_networkx_nodes(self.G, pos, nodelist=path, node_color="green", node_size=100)
-            nx.draw_networkx_edges(self.G, pos, edgelist=path_edges, edge_color="green", width=2)
-            plt.show()
+            # # Highlight the path
+            # path_edges = list(zip(path, path[1:]))
+            # nx.draw_networkx_nodes(self.G, pos, nodelist=path, node_color="green", node_size=100)
+            # nx.draw_networkx_edges(self.G, pos, edgelist=path_edges, edge_color="green", width=2)
+            # plt.show()
 
             # Create a list of poses
             poses = []

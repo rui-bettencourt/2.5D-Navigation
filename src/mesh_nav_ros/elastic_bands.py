@@ -1,4 +1,8 @@
 import numpy as np
+from scipy.spatial import KDTree
+import open3d as o3d
+import random
+import time
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 import matplotlib.patches as patches
@@ -6,9 +10,11 @@ from matplotlib.patches import Circle
 from matplotlib.colors import Normalize
 from matplotlib.cm import ScalarMappable
 
-import ikpy
+# import ikpy
 from ikpy.chain import Chain
 from ikpy.link import OriginLink, URDFLink
+import rospy
+from sensor_msgs.msg import JointState
 
 ###### variables
 k_attraction_base=0.3
@@ -28,6 +34,7 @@ start = [2, 1, 0, 0, 180]
 goal = [9,8,90,60,70]
 safe_config = {'joint1': 0.0, 'joint2': np.pi}
 center_activation_safety = 0.8
+number_points_robot = 200
 ################
 
 def wrap_angle(angle):
@@ -45,17 +52,20 @@ def wrap_angle(angle):
 #####
 # ROBOT
 class RobotKinematics:
-    def __init__(self, radius, x=0, y=0, z=0, yaw=0, joints_angles=[]):
+    def __init__(self, radius, x=0, y=0, z=0, roll=0.0,pitch=0.0,yaw=0.0, joints_angles=[0.0,0.0,0.0,0.0,0.0,0.0,0.0]):
         self.radius = radius
         self.x = x
         self.y = y
         self.z = z
         self.joints_angles = np.asarray(joints_angles)  # Angle of the first joint
         self.yaw = yaw        # Yaw angle (robot's orientation)
+        self.roll = roll
+        self.pitch = pitch
 
         # limits
-        self.joints_limits = ({'joint1':[0.0, 157.5], 'joint2':[-90, 62.5], 'joint3':[-202.5, 90.0], 'joint4': [-22.5, 135], 'joint5': [-120.0,120.0],'joint6': [-81.0,81.0],'joint7':[-120.0,120.0]})
+        self.joints_limits = ({'joint0':[-90,90],'joint1':[0.0, 157.5], 'joint2':[-90, 62.5], 'joint3':[-202.5, 90.0], 'joint4': [-22.5, 135], 'joint5': [-120.0,120.0],'joint6': [-81.0,81.0],'joint7':[-120.0,120.0]})
 
+        self.joints_limits['joint0'] = np.deg2rad(self.joints_limits['joint0'])
         self.joints_limits['joint1'] = np.deg2rad(self.joints_limits['joint1'])
         self.joints_limits['joint2'] = np.deg2rad(self.joints_limits['joint2'])
         self.joints_limits['joint3'] = np.deg2rad(self.joints_limits['joint3'])
@@ -145,7 +155,7 @@ class RobotKinematics:
             joints = {'joint1': np.asarray([x1,y1,z1]), 'joint2': np.asarray([x2,y2,z2]), 'joint3': np.asarray([x3,y3,z3]), 'joint4': np.asarray([x4,y4,z4]), 'joint5': np.asarray([x5, y5,z5]), 'joint6': np.asarray([x6,y6,z6]), 'joint7': np.asarray([x7,y7,z7])}  # Local frame coordinates of the joints
             
         else:# make this use z as well
-            joints = {'joint1': self.local_to_world(x1,y1)[0:2], 'joint2': self.local_to_world(x2, y2)[0:2], 'joint3': self.local_to_world(x3, y3)[0:2], 'joint4': self.local_to_world(x4, y4)[0:2], 'joint5': self.local_to_world(x5, y5)[0:2], 'joint6': self.local_to_world(x6, y6)[0:2], 'joint7': self.local_to_world(x7, y7)[0:2]}
+            joints = {'joint1': self.local_to_world([x1,y1,z1])[0:2], 'joint2': self.local_to_world([x2, y2, z2])[0:2], 'joint3': self.local_to_world([x3, y3, z3])[0:2], 'joint4': self.local_to_world([x4, y4, z4])[0:2], 'joint5': self.local_to_world([x5, y5, z5])[0:2], 'joint6': self.local_to_world([x6, y6, z6])[0:2], 'joint7': self.local_to_world([x7, y7, z7])[0:2]}
         return joints
 
     def compute_inverse_kinematics(self, target_x, target_y, target_z, chain='joint7'):
@@ -183,13 +193,15 @@ class RobotKinematics:
         self.y = y
         self.z = z
 
-    def set_robot_pose(self, x, y, z, yaw):
+    def set_robot_pose(self, x, y, z, yaw, roll=0.0, pitch=0.0):
         self.x = x
         self.y = y
         self.z = z
         self.yaw = yaw
+        self.roll = roll
+        self.pitch = pitch
 
-    def set_joint_angles(self, angle, joint):
+    def set_joint_angles(self, angle, joint=-1):
         # Ensure angles are within bounds
         if isinstance(angle, (list, np.ndarray)):
             for i, a in enumerate(angle):
@@ -197,88 +209,121 @@ class RobotKinematics:
         else:
             self.joints_angles[joint-1] = np.clip(angle, self.joints_limits['joint'+str(joint)][0], self.joints_limits['joint'+str(joint)][1])
 
-    def set_yaw_angle(self, yaw_angle):
+    def set_rotations_angle(self, roll,pitch,yaw):
         #     Set the robot's yaw angle (orientation)
-        self.yaw = yaw_angle
+        self.roll = roll
+        self.pitch = pitch
+        self.yaw = yaw
 
-    def local_to_world(self, x_local, y_local, yaw_local=None):
+    def create_transformation_matrix(self, x, y, z, roll, pitch, yaw):
         """
-        Transforms a point from the robot's local frame to the world frame.
+        Creates a 4x4 homogeneous transformation matrix from position (x, y, z) and
+        orientation (roll, pitch, yaw) in radians.
+        
         Args:
-            x_local (float): x coordinate in the robot frame
-            y_local (float): y coordinate in the robot frame
+        - x, y, z: Position coordinates.
+        - roll, pitch, yaw: Orientation angles in radians.
         
         Returns:
-            (float, float): The transformed (x, y) coordinates in the world frame
+        - np.array: 4x4 homogeneous transformation matrix.
         """
-        # Calculate the cosine and sine of the yaw angle
-        cos_yaw = np.cos(self.yaw)
-        sin_yaw = np.sin(self.yaw)
+        # Calculate individual rotation matrices
+        Rx = np.array([
+            [1, 0, 0],
+            [0, np.cos(roll), -np.sin(roll)],
+            [0, np.sin(roll), np.cos(roll)]
+        ])
+        
+        Ry = np.array([
+            [np.cos(pitch), 0, np.sin(pitch)],
+            [0, 1, 0],
+            [-np.sin(pitch), 0, np.cos(pitch)]
+        ])
+        
+        Rz = np.array([
+            [np.cos(yaw), -np.sin(yaw), 0],
+            [np.sin(yaw), np.cos(yaw), 0],
+            [0, 0, 1]
+        ])
+        
+        # Combined rotation matrix (Rz * Ry * Rx)
+        R = Rz @ Ry @ Rx
+        
+        # Create the 4x4 homogeneous transformation matrix
+        T = np.eye(4)
+        T[:3, :3] = R  # Top-left 3x3 block is the rotation matrix
+        T[:3, 3] = [x, y, z]  # Top-right 3x1 column is the translation vector
+        
+        return T
 
-        # Apply the rotation and translation to transform to the world frame
-        x_world = self.x + cos_yaw * x_local - sin_yaw * y_local
-        y_world = self.y + sin_yaw * x_local + cos_yaw * y_local
-
-        yaw_world = yaw_local + self.yaw if yaw_local is not None else self.yaw
-
-        # Normalize yaw_world to be within -pi and pi
-        yaw_world = (yaw_world + np.pi) % (2 * np.pi) - np.pi
-
-        return np.asarray([x_world, y_world, yaw_world])
-
-    def world_to_local(self, x_world, y_world, yaw_world=None):
+    def local_to_world(self, vector, force=False):
         """
-        Transforms a point from the world frame to the robot's local frame.
+        Converts a 3D force vector from the local frame to the world frame based on the robot's pose.
+        
         Args:
-            x_world (float): x coordinate in the world frame
-            y_world (float): y coordinate in the world frame
+        - vector (np.array): vector in the world frame, [x, y, z].
+        - force (bool): whether it is a force vector or a position vector
         
         Returns:
-            (float, float): The transformed (x, y) coordinates in the robot's local frame
+        - np.array: Transformed force vector in the local frame.
         """
-        # Calculate the cosine and sine of the yaw angle
-        cos_yaw = np.cos(self.yaw)
-        sin_yaw = np.sin(self.yaw)
+        # Generate the homogeneous transformation matrix
+        T = self.create_transformation_matrix(self.x, self.y, self.z, self.roll, self.pitch, self.yaw)
+        
+        if force:
+            # Extract the rotation part (top-left 3x3 submatrix)
+            R = T[:3, :3]
+            
+            # Apply the rotation to the force vector
+            world_force = R @ vector
 
-        # Apply the inverse rotation and translation to transform to the robot's local frame
-        x_local = cos_yaw * (x_world - self.x) + sin_yaw * (y_world - self.y)
-        y_local = -sin_yaw * (x_world - self.x) + cos_yaw * (y_world - self.y)
+            return world_force
+        else:
+            # Convert position to homogeneous coordinates (4x1 vector)
+            position_homogeneous = np.array([vector[0], vector[1], vector[2], 1.0])
+            
+            # Apply the inverse transformation to the position vector
+            world_position_homogeneous = T @ position_homogeneous
+            
+            # Return the first three elements (x, y, z) of the transformed position
+            return world_position_homogeneous[:3]
 
-        yaw_local = yaw_world - self.yaw if yaw_world is not None else self.yaw
-
-        # Normalize yaw_local to be within -pi and pi
-        yaw_local = (yaw_local + np.pi) % (2 * np.pi) - np.pi
-
-        return np.asarray([x_local, y_local, yaw_local])
-
-    def world_to_joint_frame(self, force_world, joint_id, yaw, joint_angles):
+    def world_to_local(self, vector, force=False):
         """
-        Converts a force vector from the world frame to the local frame of a specific joint.
-
+        Converts a 3D vector from the world frame to the local frame based on the robot's pose.
+        
         Args:
-            force_world (np.array): Force vector in the world frame (e.g., [Fx, Fy]).
-            joint_id (int): The ID of the joint for which we are converting the frame.
-
+        - vector (np.array): vector in the world frame, [x, y, z].
+        - force (bool): whether it is a force vector or a position vector
         Returns:
-            np.array: The force vector in the joint's local frame.
+        - np.array: Transformed force vector in the local frame.
         """
-        # Calculate the cumulative rotation angle up to the joint
-        rotation_angle = yaw + sum(joint_angles[:joint_id])  # Sum of angles up to this joint
+        # Generate the homogeneous transformation matrix
+        T = self.create_transformation_matrix(self.x, self.y, self.z, self.roll, self.pitch, self.yaw)
         
-        # Rotation matrix from world to joint local frame
-        cos_angle = np.cos(-rotation_angle)  # Negative sign to convert world to local
-        sin_angle = np.sin(-rotation_angle)
-        rotation_matrix = np.array([[cos_angle, -sin_angle], 
-                                    [sin_angle, cos_angle]])
-        
-        # Transform the world frame force to the joint's local frame
-        force_local = np.dot(rotation_matrix, force_world)
-        return force_local
+        if force:
+            # Extract the rotation part (top-left 3x3 submatrix)
+            R = T[:3, :3]
+            
+            # Invert the rotation matrix to go from world frame to local frame
+            R_inv = np.linalg.inv(R)
+            
+            # Apply the rotation to the force vector
+            local_force = R_inv @ vector
 
-    def force_to_local(self, force, position): # force and position in world frame
-        x_world_frame = force[0] + position[0]  # x-coordinate in world frame
-        y_world_frame = force[1] + position[1]   # y-coordinate in world frame
-        return self.world_to_local(x_world_frame, y_world_frame)[:2] - self.world_to_local(position[0],position[1])[:2]
+            return local_force
+        else:
+            # Invert the transformation matrix to go from world frame to local frame
+            T_inv = np.linalg.inv(T)
+            
+            # Convert position to homogeneous coordinates (4x1 vector)
+            position_homogeneous = np.array([vector[0], vector[1], vector[2], 1.0])
+            
+            # Apply the inverse transformation to the position vector
+            local_position_homogeneous = T_inv @ position_homogeneous
+            
+            # Return the first three elements (x, y, z) of the transformed position
+            return local_position_homogeneous[:3]
 
     def calculate_jacobians(self, joints_angles=None):
         if joints_angles is None:
@@ -358,74 +403,10 @@ class RobotKinematics:
 
         return interpolated_path
 
-    def generate_random_pose(self):
-        """
-        Generates a random pose within specified limits.
-
-        Args:
-            x_range (tuple): Min and max values for x position (e.g., (x_min, x_max)).
-            y_range (tuple): Min and max values for y position (e.g., (y_min, y_max)).
-            joint1_range (tuple): Min and max values for joint1 angle in radians (e.g., (joint1_min, joint1_max)).
-            joint2_range (tuple): Min and max values for joint2 angle in radians (e.g., (joint2_min, joint2_max)).
-
-        Returns:
-            tuple: Randomly generated pose (x, y, yaw, joint1_angle, joint2_angle).
-        """
-        x = np.random.uniform(0,10)
-        y = np.random.uniform(0,10)
-        yaw = np.random.uniform(0,360)
-        joint1_angle = np.random.uniform(self.joints_limits['joint1'][0], self.joints_limits['joint1'][1])
-        joint2_angle = np.random.uniform(self.joints_limits['joint2'][0], self.joints_limits['joint2'][1])
-        
-        return x, y, yaw, joint1_angle, joint2_angle
-
-# Environment
-
-class Environment:
-    def __init__(self, width, height):
-        self.width = width
-        self.height = height
-        self.grid = np.zeros((height, width))  # 0 for free space, 1 for obstacles
-
-    def add_obstacle(self, x, y):
-        """ Adds an obstacle at position (x, y) on the grid """
-        if 0 <= x < self.width and 0 <= y < self.height:
-            self.grid[y, x] = 1
-        else:
-            raise ValueError("Obstacle position out of bounds")
-
-    def remove_obstacle(self, x, y):
-        """ Removes an obstacle at position (x, y) on the grid """
-        if 0 <= x < self.width and 0 <= y < self.height:
-            self.grid[y, x] = 0
-        else:
-            raise ValueError("Obstacle position out of bounds")
-
-    def get_obstacles(self):
-        """ Return a list of obstacle coordinates """
-        return [(x, y) for y in range(self.height) for x in range(self.width) if self.grid[y, x] == 1]
-
-    def visualize(self):
-        fig, ax = plt.subplots()
-        for y in range(self.height):
-            for x in range(self.width):
-                color = 'gray' if self.grid[y, x] == 1 else 'white'
-                rect = plt.Rectangle((x, y), 1, 1, color=color, edgecolor='black')
-                ax.add_patch(rect)
-
-        ax.set_xlim(0, self.width)
-        ax.set_ylim(0, self.height)
-        ax.set_aspect('equal')
-        plt.grid(True)
-        plt.show()
-
-####
-
 class ElasticBandPlanner:
     def __init__(self, k_attraction_base=0.2, k_repulsion_base=0.2, k_attraction_joints=0.1, k_repulsion_joints=0.1, k_update_joints=0.1, k_orientation=0.1, k_orientation_from_base=0.1, k_position_from_orientation=0.0, k_safety_joints=0.05, obstacle_threshold=1.5):
         self.robot = RobotKinematics(radius=0.32, x=0, y=0, z=0, joints_angles=[0.0,0.0,0.0,0.0,0.0,0.0,0.0], yaw=np.radians(0))
         # Create the environment with obstacles
-        self.environment = Environment(width=10, height=10) # TODO: Change this, it has to be the 3dmap
 
         self.k_attraction_base = k_attraction_base
         self.k_repulsion_base = k_repulsion_base
@@ -440,6 +421,8 @@ class ElasticBandPlanner:
         self.weak_torque_threshold = 0.1
         self.min_distance_to_obstacle = min_distance_to_obstacle
         self.safe_config = safe_config
+        self.obstacles_points = None
+        self.obs_kdtree = None
         self.history = []  # To store the path evolution
 
     def compute_attractive_force(self, prev_pos, current_pos, next_pos):
@@ -467,80 +450,121 @@ class ElasticBandPlanner:
             return (prev_pos - current_pos)+direction_next*self.obstacle_threshold
         else:
             return direction_previous*self.obstacle_threshold + direction_next*self.obstacle_threshold
-    
-    # def compute_attractive_force_joint(self, current_config, next_config):
-    #     """
-    #     Compute the attractive force between two configurations.
-    #     Args:
-    #     - current_config: The current position (x, y) or joint position.
-    #     - next_config: The target or next position (x, y) or joint position.
-    #     """
-    #     # Convert the tuples to numpy arrays to allow element-wise operations
-    #     current_config = np.array(current_config)
-    #     next_config = np.array(next_config)
+
+    def plot_path_3d(self, pcl=None, bbs=None, obstacle_mesh=None):
+        all_bbs = []
+        all_bbs.append(obstacle_mesh)
+        point_cloud_obs = o3d.geometry.PointCloud()
+
+        # vertices = np.asarray(obstacle_mesh.vertices)
+        point_cloud_obs.points.extend(obstacle_mesh.vertices)
+        all_bbs.extend([point_cloud_obs])
+        # then use the code of moving the robot to move to each point in the path
+
+
+        # mesh= self.RM.convert_bbs_to_mesh(bbs)
+
+        # bb = mesh.get_axis_aligned_bounding_box()
+        # bb.scale(2.0,bb.get_center())
+        # # simplify obstacle mesh
+        # obstacle_mesh_cropped = obstacle_mesh.crop(bb)
+        # obstacle_mesh_cropped = obstacle_mesh_cropped.simplify_vertex_clustering(0.02)
+        # obstacle_mesh_cropped = obstacle_mesh_cropped.simplify_quadric_decimation(2000)
+
+        if bbs is not None:
+            rand_color = [0,random.uniform(0,1),random.uniform(0,1)]
+
+            bbs = list(bbs.values())
+
+            # for i_bb in bbs:
+            #     i_bb.color=rand_color
+            # all_bbs.extend(bbs)
+            point_cloud = o3d.geometry.PointCloud()
+            for bb in bbs:
+                vertices = np.asarray(bb.get_box_points())
+                point_cloud.points.extend(vertices)
+            all_bbs.extend([point_cloud])
+        elif pcl is not None:
+            all_bbs.extend([pcl])
+
+        o3d.visualization.draw_geometries(all_bbs)
+
+    def compute_repulsive_force_o3d(self, pose, bbs):
+        #convert bbs to pose
+        global_bbs = self.RM.simulate_move_joints(bbs, 'base_link', pose)
+        # print(pose)
+        # self.plot_path_3d(global_bbs,self.obs_mesh)
+        # Collect all bounding box points into a single array
+        # all_bb_points = np.vstack([np.asarray(bb.get_box_points()) for bb in global_bbs.values()])
         
-    #     return (next_config - current_config)
+        min_distance = float('inf')
+        direction_vector = None
+        repulsive_force = np.array([0.0, 0.0, 0.0])
 
+        # crop obstacle mesh and kdtree it
+        robot_mesh= self.RM.convert_bbs_to_mesh(global_bbs)
+        robot_pcl = robot_mesh.sample_points_uniformly(number_points_robot)
+        # all_bb_points = np.asarray(robot_pcl.points)
+        # self.plot_path_3d(pcl=robot_pcl,obstacle_mesh=self.obs_mesh)
+        bb = robot_mesh.get_axis_aligned_bounding_box()
+        bb.scale(2.0,bb.get_center())
+        # simplify obstacle mesh
+        obstacle_mesh_cropped = self.obs_mesh.crop(bb)
+        obstacle_mesh_cropped = obstacle_mesh_cropped.simplify_vertex_clustering(0.02)
+        obstacle_mesh_cropped = obstacle_mesh_cropped.simplify_quadric_decimation(2000)
+        # obstacles_points = np.asarray(obstacle_mesh_cropped.vertices)
+        # obs_kdtree = KDTree(obstacles_points)
 
-    # def update_repulsive_force(self, direction, position, obstacle_center):
-    #     """
-    #     Update the repulsive force based on the direction of the force and the distance to the obstacle.
-    #     Args:
-    #     - direction: The direction of the repulsive force.
-    #     - position: The current position of the robot.
-    #     - obstacle_center: The center of the obstacle.
-    #     Returns:
-    #     - The updated repulsive force vector.
-    #     """
-    #     dist = np.linalg.norm(position - obstacle_center)
-    #     if dist < self.obstacle_threshold:
-    #         force_magnitude = 1 / (max(self.min_distance_to_obstacle, dist) ** 2)
-    #         repulsive_force = force_magnitude * direction
-    #         # force_magnitude = self.obstacle_threshold + dist
-    #         # repulsive_force = force_magnitude * direction
-    #     else:
-    #         repulsive_force = np.array([0.0, 0.0])
-    #     return repulsive_force
+        # # Ensure KDTree is initialized
+        # if obs_kdtree is None or obstacles_points is None:
+        #     raise RuntimeError("KDTree or obstacle points not initialized.")
+        # elif len(obstacles_points) == 0:
+        #     repulsive_force = np.array([0.0, 0.0, 0.0])
+        # else:
+        if len(obstacle_mesh_cropped.vertices)>0:
+        #TODO: Check if its faster like this, creating kdtree in the beginning or cropping obstacle mesh and converting to kdtree at each pose
+            # Perform batch nearest neighbor search
+            # for point in all_bb_points:
+            #     distance, idx = obs_kdtree.query(point, k=1)
+            #     closest_point = obstacles_points[idx]
+                
+            #     # Update the minimum distance and direction vector found
+            #     if distance < min_distance:
+            #         min_distance = distance
+            #         direction_vector = (point - closest_point) / distance  # Normalized direction vector
+            # print("Min distance: ", min_distance)
+            
+            point_cloud_obs = o3d.geometry.PointCloud()
+            point_cloud_obs.points.extend(obstacle_mesh_cropped.vertices)
+            pcl_distances = robot_pcl.compute_point_cloud_distance(point_cloud_obs)
+            min_distance = min(pcl_distances)
 
-    def compute_repulsive_force_from_obstacle(self, position, obstacle_center):
-        repulsive_force = np.array([0.0, 0.0])
-        direction = np.array([0.0, 0.0])
-        dist = np.linalg.norm(position - obstacle_center)
-        if dist < self.obstacle_threshold:
-            force_magnitude = 1 / (max(self.min_distance_to_obstacle,dist) ** 2)
-            direction = (position - obstacle_center)/dist
-            repulsive_force += force_magnitude * direction
-        else:
-            repulsive_force = np.array([0.0, 0.0])
-        return repulsive_force, direction
+            min_index_robot = np.argmin(pcl_distances)
+            # Get the point in robot_pcl that has the minimum distance
+            closest_point_robot = np.asarray(robot_pcl.points)[min_index_robot]
 
-    def compute_repulsive_force(self, position, frame='global', closest_obstacle_only=True):
-        repulsive_force = np.array([0.0, 0.0])
-        obstacles = self.environment.get_obstacles()
-        if closest_obstacle_only:
-            if frame == 'local':
-                print('falta este caso')
-                exit()
+            # Now find the corresponding closest point in point_cloud_obs
+            # By computing the distances from closest_point_robot to all points in point_cloud_obs
+            distances_to_obs = np.linalg.norm(np.asarray(point_cloud_obs.points) - closest_point_robot, axis=1)
+            min_index_obs = np.argmin(distances_to_obs)
+            closest_point_obs = np.asarray(point_cloud_obs.points)[min_index_obs]
+            direction_vector = (closest_point_robot - closest_point_obs) / min_distance 
+            # print("Min distance o3d: ",min(o3d_dist))
+            # print("------------------")
+            
+            if min_distance < self.obstacle_threshold:
+                force_magnitude = 1 / (max(self.min_distance_to_obstacle,min_distance) ** 2)
+                repulsive_force = force_magnitude * direction_vector
             else:
-                # Calculate distances to each obstacle
-                dists = np.linalg.norm(obstacles - position, axis=1)
-                # Find the closest obstacle
-                min_dist_index = np.argmin(dists)
-                closest_obstacle = obstacles[min_dist_index]
-                obstacle_center = np.array(closest_obstacle) + 0.5  # Center of the obstacle
-                force_from_obstacle, _ = self.compute_repulsive_force_from_obstacle(position, obstacle_center)
-                repulsive_force += force_from_obstacle
-        else:
-            for obstacle in obstacles:
-                obstacle_center = np.array(obstacle) + 0.5  # Center of the obstacle
-                if frame == 'local':
-                    obstacle_center = self.robot.world_to_local(obstacle_center[0], obstacle_center[1])[:2]
-                force_from_obstacle, _ = self.compute_repulsive_force_from_obstacle(position, obstacle_center)
-                repulsive_force += force_from_obstacle
+                repulsive_force = np.array([0.0, 0.0, 0.0])
+
         return repulsive_force
 
-    def update_path(self, path, iterations=100, convergence_threshold=1e-3):
+    def update_path(self, path, obs_mesh, RM, iterations=100, convergence_threshold=1e-3):
         self.path = np.array(path)
+        self.RM = RM
+        self.obs_mesh = obs_mesh
+
         for iteration in range(iterations):
             new_path = self.path.copy()
             max_change = 0  # Track the maximum change in the path for convergence
@@ -610,24 +634,25 @@ class ElasticBandPlanner:
                 # new_path[i, 3:] = self.path[i, 3:] + self.k_update_joints * joints_torques
 
                 # Compute forces on the robot base
-                attractive_force = self.compute_attractive_force(prev_pos[:2], current_pos[:2], next_pos[:2])
-                repulsive_force = self.compute_repulsive_force(current_pos[:2],closest_obstacle_only=False)
+                attractive_force = self.compute_attractive_force(prev_pos[:3], current_pos[:3], next_pos[:3])
+                repulsive_force = self.compute_repulsive_force_o3d(current_pos,self.RM.body_bbs) # this repulsive force is calculated in the world frame
+                repulsive_force = self.robot.world_to_local(repulsive_force,force=True)
 
                 # Compute the orientation attraction force
                 orientation_correction = (wrap_angle(self.path[i - 1, 3] - self.path[i, 3])+wrap_angle(self.path[i + 1, 3] - self.path[i, 3]))
 
                 # A larger orientation correction might suggest the robot needs to move differently to achieve this orientation.
-                position_adjustment_force = orientation_correction * np.array([np.cos(current_pos[3]), np.sin(current_pos[3])])
+                # position_adjustment_force = orientation_correction * np.array([np.cos(current_pos[3]), np.sin(current_pos[3])])
 
 
                 # Total force on the robot base is a sum of attractive and repulsive forces
-                total_force = self.k_attraction_base * attractive_force + self.k_repulsion_base * repulsive_force + self.k_position_from_orientation * position_adjustment_force
+                total_force = self.k_attraction_base * attractive_force + self.k_repulsion_base * repulsive_force #+ self.k_position_from_orientation * position_adjustment_force
 
                 # Project the force onto the robot's heading direction
                 #heading_vector = np.array([np.cos(current_pos[2]), np.sin(current_pos[2])])
 
                 # Update the position with the total force
-                new_pos = current_pos[:2] + total_force
+                new_pos = current_pos[:3] + total_force
 
                 # Compute the torque on the robot base from the total force
                 base_torque_from_total_force = np.arctan2(total_force[1], total_force[0])
@@ -639,7 +664,7 @@ class ElasticBandPlanner:
                 new_theta = wrap_angle(new_theta)
 
                 # Update the path
-                new_path[i, :2] = new_pos
+                new_path[i, :3] = new_pos
                 new_path[i, 3] = new_theta
 
                 # Calculate the maximum change in this iteration
@@ -776,17 +801,33 @@ class ElasticBandPlanner:
 
 # Example usage of ElasticBandPlanner with a robot and environment
 if __name__ == '__main__':
+    rospy.init_node('elastic_band_planner_node')
+
+    def joint_states_callback(msg):
+            # Extract the first 7 joint positions
+        joint_positions = np.asarray(msg.position[:7])
+        # Update the robot joints
+        ep.robot.set_joint_angles(joint_positions)
+
     ep = ElasticBandPlanner(k_attraction_base=k_attraction_base, k_repulsion_base=k_repulsion_base, k_attraction_joints=k_attraction_joints,
                             k_repulsion_joints=k_repulsion_joints, k_update_joints=k_update_joints, k_orientation=k_orientation, k_orientation_from_base=k_orientation_from_base,
                             k_safety_joints=k_safety_joints, obstacle_threshold=obstacle_threshold)
-    initial_path = ep.robot.interpolate_path(n=num_samples, start_pose=start, goal_pose=goal)
+
+    # initial_path = ep.robot.interpolate_path(n=num_samples, start_pose=start, goal_pose=goal)
     # initial_path = robot.interpolate_path(n=10)
-    ep.update_path(initial_path, iterations=500,convergence_threshold=5e-3)
+    # ep.update_path(initial_path, iterations=500,convergence_threshold=5e-3)
 
     # Animate the path evolution
-    ep.animate_path_evolution(time_interval=100)
+    # ep.animate_path_evolution(time_interval=100)
 
     # angles = ep.robot.compute_inverse_kinematics(-0.15,0.1,0.63, chain='joint2')
     # print(angles)
-    # positions = ep.robot.get_arm_endpoints(local_frame=True)
-    # print(positions)
+    # Subscribe to the /joint_states topic
+    rospy.Subscriber('/joint_states', JointState, joint_states_callback)
+    rospy.sleep(2.0)
+    print(ep.robot.joints_angles)
+    positions = ep.robot.get_arm_endpoints(local_frame=True)
+    print(positions)
+    
+    # Spin the ROS node
+    rospy.spin()

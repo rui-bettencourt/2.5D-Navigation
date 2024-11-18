@@ -51,6 +51,7 @@ class RobotMeshState(object):
         joint_states_topic = "/joint_states"
         pose_odom_topic = "/ground_truth_odom"
         joints = ['arm_1_joint', 'arm_2_joint', 'arm_3_joint', 'arm_4_joint', 'arm_5_joint', 'arm_6_joint', 'arm_7_joint']#, 'torso_lift_joint']
+        not_body = ["arm_1_link", "arm_2_link", "arm_3_link","arm_4_link", "arm_5_link", "arm_6_link", "arm_6_link",'gripper_link', 'gripper_right_finger_link', 'gripper_left_finger_link']
         robot_base_link = 'base_link'
         ##############
 
@@ -59,6 +60,7 @@ class RobotMeshState(object):
         self.robot_state = Pose()
         self.robot_bbs = {}
         self.robot_mesh_bb = self.simplify_robot_mesh()
+        self.body_bbs = {link_name: bb for link_name, bb in self.robot_bbs.items() if link_name not in not_body}
         self.whitelist_joints_connections = {'arm_6_link': 'gripper_link'}
         self.base_link = robot_base_link
         self.robot_joints = joints

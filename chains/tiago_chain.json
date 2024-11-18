@@ -1,0 +1,95 @@
+{
+    "name": "Complete_arm",
+    "links": [
+        {
+            "name": "Base link",
+            "translation_vector": null,
+            "orientation_matrix": null,
+            "bounds": [
+                -Infinity,
+                Infinity
+            ]
+        },
+        {
+            "name": "torso_fixed_joint",
+            "translation_vector": null,
+            "orientation_matrix": null,
+            "bounds": [
+                -Infinity,
+                Infinity
+            ]
+        },
+        {
+            "name": "torso_lift_joint",
+            "translation_vector": null,
+            "orientation_matrix": null,
+            "bounds": [
+                0.0,
+                0.35
+            ]
+        },
+        {
+            "name": "arm_1_joint",
+            "translation_vector": null,
+            "orientation_matrix": null,
+            "bounds": [
+                0.0,
+                2.748893571891069
+            ]
+        },
+        {
+            "name": "arm_2_joint",
+            "translation_vector": null,
+            "orientation_matrix": null,
+            "bounds": [
+                -1.5707963267948966,
+                1.090830782496456
+            ]
+        },
+        {
+            "name": "arm_3_joint",
+            "translation_vector": null,
+            "orientation_matrix": null,
+            "bounds": [
+                -3.5342917352885173,
+                1.5707963267948966
+            ]
+        },
+        {
+            "name": "arm_4_joint",
+            "translation_vector": null,
+            "orientation_matrix": null,
+            "bounds": [
+                -0.39269908169872414,
+                2.356194490192345
+            ]
+        },
+        {
+            "name": "arm_5_joint",
+            "translation_vector": null,
+            "orientation_matrix": null,
+            "bounds": [
+                -2.0943951023931953,
+                2.0943951023931953
+            ]
+        },
+        {
+            "name": "arm_6_joint",
+            "translation_vector": null,
+            "orientation_matrix": null,
+            "bounds": [
+                -1.413716694115407,
+                1.413716694115407
+            ]
+        },
+        {
+            "name": "arm_7_joint",
+            "translation_vector": null,
+            "orientation_matrix": null,
+            "bounds": [
+                -2.0943951023931953,
+                2.0943951023931953
+            ]
+        }
+    ]
+}
