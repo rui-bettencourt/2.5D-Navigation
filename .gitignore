@@ -211,3 +211,7 @@ build/*
 src/mesh_nav_ros/__pycache__/*
 .vscode/c_cpp_properties.json
 .vscode/settings.json
+src/mesh_nav_ros/mpc/__pycache__/functions.cpython-38.pyc
+src/mesh_nav_ros/mpc/__pycache__/mpc_linear.cpython-38.pyc
+src/mesh_nav_ros/mpc/__pycache__/mpc.cpython-38.pyc
+src/mesh_nav_ros/tests/__pycache__/construct_ikpy_chains.cpython-38.pyc

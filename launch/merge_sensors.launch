@@ -1,0 +1,29 @@
+<launch>
+  <!-- Arguments -->
+  <arg name="target_frame" default="base_footprint" />
+  <arg name="cloud_in1" default="/unilidar/points" />
+  <arg name="cloud_in2" default="/xtion/depth/points" />
+  <arg name="cloud_out" default="/tiago/points"/>
+
+  <!-- Launch PointCloud2 concatenator node -->
+  <node pkg="pointcloud_concatenate" type="pointcloud_concatenate_node" name="pc_concat" output="screen">
+    <param name="target_frame" value="$(arg target_frame)" />    
+    <param name="clouds" value="2" />
+    <param name="hz" value="10" />
+    <param name="filter_zs" value="false" />
+    <param name="filter_zs_height" value="-0.01" />
+    <param name="project_negatives_to_zero" value="false" />
+    <param name="downsample" value="false" />  <!-- downsampling each sensor message at the beginning -->
+    <param name="downsample_after_filtering_z" value="false" /> <!-- downsampling again after filtering the z values-->
+    <param name="downsample_resolution" value="0.02" />
+    <remap from="cloud_in1" to="$(arg cloud_in1)" />
+    <remap from="cloud_in2" to="$(arg cloud_in2)" />
+    <!-- <remap from="cloud_in3" to="$(arg cloud_in3)" /> -->
+    <!-- <remap from="cloud_in4" to="$(arg cloud_in4)" /> -->
+    <remap from="cloud_out" to="$(arg cloud_out)" />
+  </node>
+
+  <!-- Launch RViz display -->
+  <!-- <node name="pointcloud_concatenate_ui" pkg="rviz" type="rviz" args="-d $(find pointcloud_concatenate)/config/rviz/pointcloud_concatenate.rviz" output="screen" /> -->
+
+</launch>

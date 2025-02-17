@@ -1,5 +1,5 @@
 {
-    "name": "Complete_arm",
+    "name": "Sub-chain to Joint1",
     "links": [
         {
             "name": "Base link",

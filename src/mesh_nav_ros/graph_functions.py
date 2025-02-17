@@ -31,7 +31,7 @@ class GraphManager(object):
     def graph_to_world(self, node):
         return self.__Gpositions[node]
 
-    def plan(self, start_point, end_point):
+    def plan(self, start_point, end_point, return_dict=True):
         # Find the nearest nodes in the graph to these coordinates
         start_node = self.world_to_graph(start_point[:3])
         end_node = self.world_to_graph(end_point)
@@ -64,8 +64,11 @@ class GraphManager(object):
                     prev_position = np.asarray(self.graph_to_world(path[i - 1]))
                     delta = position - prev_position
                     orientation = np.arctan2(delta[1], delta[0])
-                pose = np.append(position, orientation)
-                poses.append(pose)
+                if return_dict:
+                    poses.append({'x': position[0], 'y': position[1], 'z': position[2], 'yaw': orientation})
+                else:
+                    pose = np.append(position, orientation)
+                    poses.append(pose)
 
             return poses
 

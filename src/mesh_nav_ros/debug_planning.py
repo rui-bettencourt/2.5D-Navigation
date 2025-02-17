@@ -7,14 +7,13 @@ from scipy.spatial.transform import Rotation as R
 import time
 import random
 from copy import deepcopy
-from mesh_nav_ros.robot_mesh_state import RobotMeshState
 from collision_detections import *
 from joints_explorer import PRM
 # from octomap_functions import *
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from std_msgs.msg import Header
 from graph_functions import GraphManager
-from mesh_nav_ros.robot_mesh_state import RobotMeshState
+from robot_mesh_state import RobotMeshState
 
 
 class Debug(object):
@@ -32,6 +31,7 @@ class Debug(object):
         self.prm.generate(num_samples=1)
         print("Took {} seconds for PRM".format(time.time() - time_start))
         joint_names = ['base_link','torso_lift_joint','arm_1_joint']
+        # joint_names = ['base_link','arm_1_joint','arm_2_joint','arm_3_joint','arm_4_joint','arm_5_joint','arm_6_joint','arm_7_joint']
 
         while not rospy.is_shutdown():
             all_bbs = []
@@ -51,6 +51,7 @@ class Debug(object):
                 # print("Node: ", node)
                 # print(attr['configuration'])
                 # print(attr['configuration'])
+                print(attr['configuration'])
                 conf_bb = self.MC.simulate_move_joints(self.MC.robot_bbs, joint_names[0], attr['configuration'][:3])  # move base
                 conf_bb = self.MC.simulate_move_joints(conf_bb, joint_names[1:], attr['configuration'][3:])             # move joints
                 

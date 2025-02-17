@@ -8,14 +8,20 @@ import numpy as np
 from robot_mesh_state import RobotMeshState
 from collision_detections import *
 from graph_functions import GraphManager
-from elastic_bands import ElasticBandPlanner
+from elastic_bands_threads import ElasticBandPlanner
+from robot_kinematics import RobotKinematics
 import time
+from aux_functions import interpolate_path, sample_path
+from matplotlib import colormaps as cm
+import matplotlib.pyplot as plt
+import json
 
 ###### variables
 k_attraction_base=0.3
 k_repulsion_base=0.005
 k_attraction_joints=0.2
-k_repulsion_joints=0.4
+k_repulsion_joints=0.01
+k_repulsion_robot_joints=0.0
 k_safety_joints = 0.0
 dynamic_safety = False
 closest_obstacle_only = True
@@ -23,10 +29,18 @@ k_update_joints=0.2
 k_orientation=0.02
 k_orientation_from_base=0.0
 obstacle_threshold=1.5
-min_distance_to_obstacle = 0.05
-start = np.asarray([-11.0, -8.0, 0.0, 0.0]) # (x,y,z,yaw)
-goal = np.asarray([-4.6, -8.5, 0.0, 0.0])
-safe_config = {'joint1': 0.0, 'joint2': np.pi}
+#min_distance_to_obstacle = 0.05
+start = {'x': -11.0, 'y': -8.0, 'z': 0.0,
+         'roll': 0.0, 'pitch': 0.0, 'yaw': 0.0,
+         'q1': 0.0, 'q2': -0.05, 'q3': 0.0, 'q4': 0.02, 'q5': 0.0, 'q6': 0.0, 'q7': 0.0}
+        #  'q1': 0.2, 'q2': -1.34, 'q3': -0.2, 'q4': 1.94, 'q5': -1.57, 'q6': 1.37, 'q7': 0.0}
+goal = {'x': -4.6, 'y': -8.5, 'z': 0.0,
+        'roll': 0.0, 'pitch': 0.0, 'yaw': 0.0,
+        # 'q1': 1.5, 'q2': -0.09, 'q3': -3.27, 'q4': 1.58, 'q5': -1.78, 'q6': -1.39, 'q7': 0.0}
+        # 'q1': 0.2, 'q2': -1.34, 'q3': -0.2, 'q4': 1.94, 'q5': -1.57, 'q6': 1.37, 'q7': 0.0}
+        'q1': 0.0, 'q2': -0.05, 'q3': 0.0, 'q4': 0.02, 'q5': 0.0, 'q6': 0.0, 'q7': 0.0}
+        # 'q1': 0.046, 'q2': 1.02, 'q3': -2.77, 'q4': 0.77, 'q5': 0.0, 'q6': 0.0, 'q7': 0.0}
+safe_config = {'q1': 0.2, 'q2': -1.34, 'q3': -0.2, 'q4': 1.94, 'q5': -1.57, 'q6': 1.37, 'q7': 0.0}
 center_activation_safety = 0.8
 ################
 
@@ -41,35 +55,54 @@ class MeshNav(object):
 
         # create classes needed for navigation
         # self.Meshes = RobotMeshState()
+        self.robot_kinematics = RobotKinematics()
         self.Graph = GraphManager(self.path+"traversablegroundgraph.pkl")
-        self.RM = RobotMeshState()
-        self.EBAND = ElasticBandPlanner(k_attraction_base=k_attraction_base, k_repulsion_base=k_repulsion_base, k_attraction_joints=k_attraction_joints,
-                            k_repulsion_joints=k_repulsion_joints, k_update_joints=k_update_joints, k_orientation=k_orientation, k_orientation_from_base=k_orientation_from_base,
-                            k_safety_joints=k_safety_joints, obstacle_threshold=obstacle_threshold)
+        self.RM = RobotMeshState(robot_kinematics=self.robot_kinematics)
+        self.EBAND = ElasticBandPlanner(robot_kinematics=self.robot_kinematics, k_attraction_base=k_attraction_base, 
+                                        k_repulsion_base=k_repulsion_base, k_attraction_joints=k_attraction_joints,
+                                        k_repulsion_joints=k_repulsion_joints, k_repulsion_robot_joints=k_repulsion_robot_joints, k_update_joints=k_update_joints,
+                                        k_orientation=k_orientation, k_orientation_from_base=k_orientation_from_base,
+                                        k_safety_joints=k_safety_joints, safe_config=safe_config,
+                                        obstacle_threshold=obstacle_threshold)
+        self.joint_names = ['base_link','arm_1_joint','arm_2_joint','arm_3_joint','arm_4_joint','arm_5_joint','arm_6_joint','arm_7_joint']
 
     def run(self):
         obstacle_mesh = o3d.io.read_triangle_mesh(self.path + 'obstacles.ply')
         obstacle_mesh.paint_uniform_color([1.0, 0.72, 0.67]) # pink
         execution_times = []
         number_of_attempts = 100
+        print("Read obstacles!")
 
         while not rospy.is_shutdown() and number_of_attempts>0:
             # test path planning with random start and end
-            start_coord = start[:4]  # Replace with your start coordinates
-            end_coord = goal[:3]     # Replace with your end coordinates
+            start_coord = [start['x'], start['y'], start['z'], start['yaw']]
+            end_coord = [goal['x'], goal['y'], goal['yaw']]
+
+            start_time = time.time()
 
             path = self.Graph.plan(start_coord, end_coord)
+            path = sample_path(path,10)
             # self.plot_path_3d(path, obstacle_mesh)
             # check for collisions all points in the path
             
+            # complete the path initialization with roll, pitch and qs
+            path = interpolate_path(path,start,goal)
+            end_time = time.time()
+            print("ORIGINAL PATH. Time: ", end_time - start_time)
+            # self.plot_path_3d(path, obstacle_mesh)
+
             # if there is collisions use some sort of elastic band to move away from the collision
             start_time = time.time()
-            new_path = self.EBAND.update_path(path, obstacle_mesh, self.RM, 500, convergence_threshold=1e-2)
+            new_path = self.EBAND.update_path(path, obstacle_mesh, self.RM, 100, convergence_threshold=2e-2)
+            # new_path = path
             end_time = time.time()
             print("Execution time:", end_time - start_time)
 
-            self.EBAND.animate_path_evolution(50)
+            # self.EBAND.animate_path_evolution(50)
             self.plot_path_3d(new_path, obstacle_mesh)
+            with open("/home/rui/pcl_ws/src/mesh_nav/data/test_path.json", "w") as file:
+                json.dump(new_path, file, indent=4)
+
             # print(self.RM.robot_state.get_pose(), self.RM.robot_state.joints)
             exit()
             execution_times.append(end_time-start_time)
@@ -82,33 +115,53 @@ class MeshNav(object):
     def plot_path_3d(self, path, obstacle_mesh):
         all_bbs = []
         all_bbs.append(obstacle_mesh)
+        colormap= plt.get_cmap('jet')
+        # colormap = cm.get_cmap('jet') #('RdYlGn')
+        padding = 0.8
         # then use the code of moving the robot to move to each point in the path
         for pose in path:
-            conf_bb = self.RM.simulate_move_joints(self.RM.robot_bbs, 'base_link', pose) # this is just moving the base to the pose. arm config is the online one
+            # pose_array = np.array([pose['x'], pose['y'], pose['z'], pose['roll'], pose['pitch'], pose['yaw']])
+            # conf_bb = self.RM.simulate_move_joints(self.RM.robot_bbs, self.joint_names[0], pose_array) # this is just moving the base to the pose. arm config is the online one
+            # joint_poses = []
+            # for key in pose.keys():
+            #     if key.startswith('q'):
+            #         joint_poses.append(pose[key])
+            # conf_bb = self.RM.simulate_move_joints(conf_bb, self.joint_names[1:], joint_poses) # move the joints
+            meshes = self.RM.update_robot_arm_bbs(pose, move_base = True, local_frame = False)
 
-            mesh= self.RM.convert_bbs_to_mesh(conf_bb)
+            # mesh= self.RM.convert_bbs_to_mesh(conf_bb)
+            combined_mesh = o3d.geometry.TriangleMesh()
+            for mesh in meshes.values():
+                combined_mesh += mesh
 
-            bb = mesh.get_axis_aligned_bounding_box()
+            bb = combined_mesh.get_axis_aligned_bounding_box()
             bb.scale(2.0,bb.get_center())
             # simplify obstacle mesh
             obstacle_mesh_cropped = obstacle_mesh.crop(bb)
             obstacle_mesh_cropped = obstacle_mesh_cropped.simplify_vertex_clustering(0.02)
             obstacle_mesh_cropped = obstacle_mesh_cropped.simplify_quadric_decimation(2000)
 
-            if is_colliding_o3d(mesh, obstacle_mesh_cropped):
-                rand_color = [1.0,0,0]
+            if is_colliding_o3d(combined_mesh, obstacle_mesh_cropped):
+                mesh_color = [1.0,0,0]
             else:
-                rand_color = [0,random.uniform(0,1),random.uniform(0,1)]
+                distance, _ = self.EBAND.compute_2mesh_distance(combined_mesh, obstacle_mesh_cropped)
+                # print(distance)
+                norm_distance = (1-min(distance, obstacle_threshold)/(obstacle_threshold))*padding
+                # print(norm_distance)
+                # print('----------------')
+                mesh_color = np.asarray(colormap(norm_distance))[:3]
 
-            conf_bb = list(conf_bb.values())
 
-            for bb in conf_bb:
-                bb.color=rand_color
-            all_bbs.extend(conf_bb)
+            # conf_bb = list(meshes.values())
+
+            # for bb in conf_bb:
+            #     bb.color=mesh_color
+            # all_bbs.extend(conf_bb)
+            combined_mesh.paint_uniform_color(mesh_color)
+            combined_mesh.compute_vertex_normals()
+            all_bbs.append(combined_mesh)
 
         o3d.visualization.draw_geometries(all_bbs)
-
-    # def initialize_full_body_path(self,path):
 
 if __name__ == '__main__':
     mn = MeshNav()

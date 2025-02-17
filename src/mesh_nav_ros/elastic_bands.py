@@ -9,6 +9,7 @@ import matplotlib.patches as patches
 from matplotlib.patches import Circle
 from matplotlib.colors import Normalize
 from matplotlib.cm import ScalarMappable
+from tests.construct_ikpy_chains import create_ikpy_chain_from_urdf
 
 # import ikpy
 from ikpy.chain import Chain
@@ -61,101 +62,50 @@ class RobotKinematics:
         self.yaw = yaw        # Yaw angle (robot's orientation)
         self.roll = roll
         self.pitch = pitch
-
-        # limits
-        self.joints_limits = ({'joint0':[-90,90],'joint1':[0.0, 157.5], 'joint2':[-90, 62.5], 'joint3':[-202.5, 90.0], 'joint4': [-22.5, 135], 'joint5': [-120.0,120.0],'joint6': [-81.0,81.0],'joint7':[-120.0,120.0]})
-
-        self.joints_limits['joint0'] = np.deg2rad(self.joints_limits['joint0'])
-        self.joints_limits['joint1'] = np.deg2rad(self.joints_limits['joint1'])
-        self.joints_limits['joint2'] = np.deg2rad(self.joints_limits['joint2'])
-        self.joints_limits['joint3'] = np.deg2rad(self.joints_limits['joint3'])
-        self.joints_limits['joint4'] = np.deg2rad(self.joints_limits['joint4'])
-        self.joints_limits['joint5'] = np.deg2rad(self.joints_limits['joint5'])
-        self.joints_limits['joint6'] = np.deg2rad(self.joints_limits['joint6'])
-        self.joints_limits['joint7'] = np.deg2rad(self.joints_limits['joint7'])
+        self.joints_limits = {}
+        ############## CONFIG #################################################################
+        urdf_file = '/home/rui/socrob_ws/src/isr_tiago/simulation/mbot_simulation_environments/robots/tiago_ouster.urdf'
+        root_link = ['base_link']
+        ee_link = "arm_7_joint"
+        self.dof = 7
+        ######################################################################################
 
         # Define the kinematic chain using ikpy
-        self.joint7_chain = Chain(name='Full Arm', links=[
-            URDFLink(
-                name="base_link",
-                origin_translation=[0.093, 0.014, 0.639],  # Translation between base_link and arm_1_link
-                origin_orientation=[0, 0, np.deg2rad(-90)],                 # Orientation of joint 1
-                rotation=[0, 0, 0]
-            ),  # Base link without any translation or rotation
-            URDFLink(
-                name="joint1",
-                origin_translation=[0.125, 0.0195, -0.031],  # Translation for joint2
-                origin_orientation=[np.deg2rad(90.0), 0, 0],                 # Orientation for joint2
-                rotation=[0, 0, 1],                            # Joint 1 rotates around Z-axis (2D plane)
-                bounds=self.joints_limits['joint1']
-            ),
-            URDFLink(
-                name="joint2",
-                origin_translation=[0.0895, 0.0, -0.0015],  # Translation of joint 2
-                origin_orientation=[np.deg2rad(-90.0), 0, np.deg2rad(90.0)],                 # Orientation of joint 2
-                rotation=[0, 0, 1],
-                bounds=self.joints_limits['joint2']
-            ),URDFLink(
-                name="joint3",
-                origin_translation=[-0.02, -0.027, -0.222],
-                origin_orientation=[np.deg2rad(-90.0), np.deg2rad(-90.0), np.deg2rad(0.0)],                 # Orientation of joint 2
-                rotation=[0, 0, 1],
-                bounds=self.joints_limits['joint3']
-            ),URDFLink(
-                name="joint4",
-                origin_translation=[-0.162, 0.02, 0.027],
-                origin_orientation=[np.deg2rad(90.0), np.deg2rad(-90.0), np.deg2rad(-90.0)],                 # Orientation of joint 2
-                rotation=[0, 0, 1],
-                bounds=self.joints_limits['joint4']
-            ),URDFLink(
-                name="joint5",
-                origin_translation=[0, 0, 0.15],
-                origin_orientation=[np.deg2rad(0.0), np.deg2rad(-90.0), np.deg2rad(-90.0)],                 # Orientation of joint 2
-                rotation=[0, 0, 1],
-                bounds=self.joints_limits['joint5']
-            ),URDFLink(
-                name="joint6",
-                origin_translation=[0,0,0],
-                origin_orientation=[np.deg2rad(90.0), np.deg2rad(0.0), np.deg2rad(90.0)],                 # Orientation of joint 2
-                rotation=[0, 0, 1],
-                bounds=self.joints_limits['joint6']
-            ),URDFLink(
-                name="joint7",
-                origin_translation=[0.0, 0.0, 0.028],
-                origin_orientation=[np.deg2rad(0.0), np.deg2rad(0.0), np.deg2rad(0.0)],                 # Orientation of joint 2
-                rotation=[0, 0, 1],
-                bounds=self.joints_limits['joint7']
-            )],
-            active_links_mask=[True, True, True,True,True,True,True,True])  # Only joints 1 and 2 are active)
+        self.joint7_chain = create_ikpy_chain_from_urdf(urdf_file,root_link,ee_link)
+        self.num_links = len(self.joint7_chain.links)
+        for link in self.joint7_chain .links:
+            if 'arm' in link.name:
+                tag = 'joint' + link.name.split('_')[1]
+                self.joints_limits[tag] = link.bounds
 
-        self.joint6_chain = Chain(name='Sub-chain to Joint6', links=self.joint7_chain.links[:7], active_links_mask=[True, True, True,True,True,True,True])
-        self.joint5_chain = Chain(name='Sub-chain to Joint5', links=self.joint7_chain.links[:6], active_links_mask=[True, True, True,True,True,True])
-        self.joint4_chain = Chain(name='Sub-chain to Joint4', links=self.joint7_chain.links[:5], active_links_mask=[True, True, True,True,True])
-        self.joint3_chain = Chain(name='Sub-chain to Joint3', links=self.joint7_chain.links[:4], active_links_mask=[True, True, True,True])
-        self.joint2_chain = Chain(name='Sub-chain to Joint2', links=self.joint7_chain.links[:3], active_links_mask=[True, True, True])
-        self.joint1_chain = Chain(name='Sub-chain to Joint1', links=self.joint7_chain.links[:2], active_links_mask=[True, True])
+        self.joint6_chain = Chain(name='Sub-chain to Joint6', links=self.joint7_chain.links[:(self.num_links-1)])
+        self.joint5_chain = Chain(name='Sub-chain to Joint5', links=self.joint7_chain.links[:(self.num_links-2)])
+        self.joint4_chain = Chain(name='Sub-chain to Joint4', links=self.joint7_chain.links[:(self.num_links-3)])
+        self.joint3_chain = Chain(name='Sub-chain to Joint3', links=self.joint7_chain.links[:(self.num_links-4)])
+        self.joint2_chain = Chain(name='Sub-chain to Joint2', links=self.joint7_chain.links[:(self.num_links-5)])
+        self.joint1_chain = Chain(name='Sub-chain to Joint1', links=self.joint7_chain.links[:(self.num_links-6)])
 
     def get_arm_endpoints(self, local_frame=False):
         # Forward kinematics using the chain
-        angles = np.append(self.joints_angles,[0.0])
+        angles = np.append((self.num_links-7) * [0.0],self.joints_angles)
         fk_results = self.joint7_chain.forward_kinematics(angles, full_kinematics=True)
         # Extract the (x, y) positions of the arm's first joint and the end effector
         # The position of all joints
-        x1, y1, z1 = fk_results[1][0:3, 3]  # Position of the joints
-        x2, y2, z2 = fk_results[2][0:3, 3]
-        x3, y3, z3 = fk_results[3][0:3, 3]
-        x4, y4, z4 = fk_results[4][0:3, 3]
-        x5, y5, z5 = fk_results[5][0:3, 3]
-        x6, y6, z6 = fk_results[6][0:3, 3]
+        x1, y1, z1 = fk_results[self.num_links-7][0:3, 3]  # Position of the joints
+        x2, y2, z2 = fk_results[self.num_links-6][0:3, 3]
+        x3, y3, z3 = fk_results[self.num_links-5][0:3, 3]
+        x4, y4, z4 = fk_results[self.num_links-4][0:3, 3]
+        x5, y5, z5 = fk_results[self.num_links-3][0:3, 3]
+        x6, y6, z6 = fk_results[self.num_links-2][0:3, 3]
 
         # The position of the end effector is in the final link
-        x7, y7, z7 = fk_results[7][0:3, 3]  # Position of the end effector (arm2 endpoint) in the robot frame
+        x7, y7, z7 = fk_results[self.num_links-1][0:3, 3]  # Position of the end effector (arm2 endpoint) in the robot frame
 
         if local_frame:
             joints = {'joint1': np.asarray([x1,y1,z1]), 'joint2': np.asarray([x2,y2,z2]), 'joint3': np.asarray([x3,y3,z3]), 'joint4': np.asarray([x4,y4,z4]), 'joint5': np.asarray([x5, y5,z5]), 'joint6': np.asarray([x6,y6,z6]), 'joint7': np.asarray([x7,y7,z7])}  # Local frame coordinates of the joints
             
         else:# make this use z as well
-            joints = {'joint1': self.local_to_world([x1,y1,z1])[0:2], 'joint2': self.local_to_world([x2, y2, z2])[0:2], 'joint3': self.local_to_world([x3, y3, z3])[0:2], 'joint4': self.local_to_world([x4, y4, z4])[0:2], 'joint5': self.local_to_world([x5, y5, z5])[0:2], 'joint6': self.local_to_world([x6, y6, z6])[0:2], 'joint7': self.local_to_world([x7, y7, z7])[0:2]}
+            joints = {'joint1': self.local_to_world([x1,y1,z1]), 'joint2': self.local_to_world([x2, y2, z2]), 'joint3': self.local_to_world([x3, y3, z3]), 'joint4': self.local_to_world([x4, y4, z4]), 'joint5': self.local_to_world([x5, y5, z5]), 'joint6': self.local_to_world([x6, y6, z6]), 'joint7': self.local_to_world([x7, y7, z7])}
         return joints
 
     def compute_inverse_kinematics(self, target_x, target_y, target_z, chain='joint7'):
@@ -168,6 +118,7 @@ class RobotKinematics:
         ax = fig.add_subplot(111, projection='3d')
         if chain=='joint7':
             joint_angles = self.joint7_chain.inverse_kinematics(target_position)
+            self.joint7_chain.plot(joint_angles,ax)
         elif chain == 'joint6':
             joint_angles = self.joint6_chain.inverse_kinematics(target_position)
         elif chain == 'joint5':
@@ -578,40 +529,36 @@ class ElasticBandPlanner:
                 # Get arm joint positions for current configuration
                 self.robot.set_robot_pose(current_pos[0], current_pos[1], current_pos[2], current_pos[3])
 
-                # Get the previous positions of the arm joints
-                # self.robot.set_joint_angles(self.path[i-1, 3], self.path[i-1, 4])
+                # # Get the previous positions of the arm joints
+                # self.robot.set_joint_angles(self.path[i-1, 4:])
                 # prev_joint_positions = self.robot.get_arm_endpoints(local_frame=False)
 
-                # # Get the next positions of the arm joints
-                # self.robot.set_joint_angles(self.path[i+1, 3], self.path[i+1, 4])
+                # # # Get the next positions of the arm joints
+                # self.robot.set_joint_angles(self.path[i+1, 4:])
                 # next_joint_positions = self.robot.get_arm_endpoints(local_frame=False)
 
-                # # Get the current positions of the arm joints
-                # self.robot.set_joint_angles(self.path[i, 3], self.path[i, 4])
+                # # # Get the current positions of the arm joints
+                # self.robot.set_joint_angles(self.path[i, 4:])
                 # joint_positions = self.robot.get_arm_endpoints(local_frame=False)
 
-                # calculate dynamic safety value
-                # if dynamic_safety:
-                #     # self.k_safety_joints = self.k_attraction_joints * (float(path_len)-i)/float(path_len)
-                #     self.k_safety_joints = self.k_attraction_joints * ((1-np.tanh(i-center_activation_safety*path_len))/2)
+                # # calculate dynamic safety value
+                # # if dynamic_safety:
+                # #     # self.k_safety_joints = self.k_attraction_joints * (float(path_len)-i)/float(path_len)
+                # #     self.k_safety_joints = self.k_attraction_joints * ((1-np.tanh(i-center_activation_safety*path_len))/2)
 
-                # # Compute repulsive forces on the arm joints
-                # joints_torques = np.asarray([0.0,0.0])
+                # # # Compute repulsive forces on the arm joints
+                # joints_torques = np.asarray(self.dof * [0.0])
                 # for joint in joint_positions.keys():
                 #     if joint not in []:
                 #         joint_id = int(joint.replace('joint', ''))
-                #         joint_index = joint_id + 2 # 2 from the base position
+                #         joint_index = joint_id + 3 # 2 from the base position
 
                 #         # Compute attractive and repulsive forces on the arm joints
-                #         # attractive_joint_force = (self.path[i - 1, joint_index] - self.path[i, joint_index])+(self.path[i + 1, joint_index] - self.path[i, joint_index])
-                #         # # add the attractive force to the torques
-                #         # joints_torques[joint_id-1] = self.k_attraction_joints * attractive_joint_force
                 #         attractive_joint_force = self.compute_attractive_force(prev_joint_positions[joint],joint_positions[joint], next_joint_positions[joint])
                 #         # Convert attractive force to the joint's local frame
-                #         # local_attractive_joint_force = self.robot.force_to_local(attractive_joint_force, joint_positions[joint])
-                #         local_attractive_joint_force = self.robot.world_to_joint_frame(attractive_joint_force, 0, current_pos[2], joint_angles=[self.path[i, 3], self.path[i, 4]])
+                #         local_attractive_joint_force = self.robot.world_to_local(attractive_joint_force, force=True)
 
-                #         attractive_torques = self.robot.calculate_joint_torques(local_attractive_joint_force, joint_id, joints_angles=[self.path[i, 3], self.path[i, 4]])
+                #         attractive_torques = self.robot.calculate_joint_torques(local_attractive_joint_force, joint_id, joints_angles=self.path[i, 4:])
                 #         joints_torques += self.k_attraction_joints * attractive_torques
 
                 #         repulsive_joint_force = self.compute_repulsive_force(joint_positions[joint],frame='global', closest_obstacle_only=closest_obstacle_only)
@@ -826,7 +773,10 @@ if __name__ == '__main__':
     rospy.Subscriber('/joint_states', JointState, joint_states_callback)
     rospy.sleep(2.0)
     print(ep.robot.joints_angles)
+    start_time = time.time()
     positions = ep.robot.get_arm_endpoints(local_frame=True)
+    end_time = time.time()
+    print("Forward kinematics calculation time:", end_time - start_time)
     print(positions)
     
     # Spin the ROS node
