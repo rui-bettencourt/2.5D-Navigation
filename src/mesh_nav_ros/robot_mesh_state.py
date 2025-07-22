@@ -196,13 +196,14 @@ class RobotMeshState(object):
         for key in configuration.keys():
             if key.startswith('q'):
                 joint_angles_array.append(configuration[key])
-        self.robot_kinematics.set_joint_angles(joint_angles_array)
-        fk_results = self.robot_kinematics.forward_kinematics(joint_angles_array)
+        if self.robot_kinematics.dof>0:
+            self.robot_kinematics.set_joint_angles(joint_angles_array)
+            fk_results = self.robot_kinematics.forward_kinematics(joint_angles_array)
 
         for joint in new_mesh.keys():
             #if joint is part of the configured movable joints, then move it
 
-            if joint.replace('link','joint') in self.robot_joints:
+            if joint.replace('link','joint') in self.robot_joints and self.robot_kinematics.dof>0:
                 # transformation_fk = fk_results[joint]
                 transformation_fk = np.squeeze(fk_results[joint].cpu().get_matrix().numpy(),axis=0)
                 if not local_frame:
@@ -217,7 +218,7 @@ class RobotMeshState(object):
                 mesh = new_mesh[joint]
                 mesh.transform(robot_to_world)
                 new_mesh[joint] = mesh
-            elif joint in self.whitelist_joints_connections.keys():
+            elif joint in self.whitelist_joints_connections.keys() and self.robot_kinematics.dof>0:
                 parent_joint, extra_joints, manual_transform = self.whitelist_joints_connections[joint]
                 manual_transform = np.array(manual_transform)
 

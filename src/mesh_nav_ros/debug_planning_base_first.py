@@ -10,6 +10,7 @@ from collision_detections import *
 from graph_functions import GraphManager
 from elastic_bands_threads import ElasticBandPlanner
 from robot_kinematics import RobotKinematics
+# from robot_kinematics_rob_toolbox import RobotKinematics
 import time
 from aux_functions import interpolate_path, sample_path
 from matplotlib import colormaps as cm
@@ -17,30 +18,44 @@ import matplotlib.pyplot as plt
 import json
 
 ###### variables
-k_attraction_base=0.3
-k_repulsion_base=0.005
+k_attraction_base=0.005
+k_repulsion_base=0.00002
 k_attraction_joints=0.2
-k_repulsion_joints=0.01
+k_repulsion_joints=0.09
 k_repulsion_robot_joints=0.0
-k_safety_joints = 0.0
-dynamic_safety = False
+k_safety_joints = 0.1 #0.0
 closest_obstacle_only = True
 k_update_joints=0.2
 k_orientation=0.02
 k_orientation_from_base=0.0
 obstacle_threshold=1.5
+manipulator = False
 #min_distance_to_obstacle = 0.05
-start = {'x': -11.0, 'y': -8.0, 'z': 0.0,
+# start = {'x': -11.0, 'y': -8.0, 'z': 0.0,
+#          'roll': 0.0, 'pitch': 0.0, 'yaw': 0.0,
+#          'q1': 0.0, 'q2': -0.05, 'q3': 0.0, 'q4': 0.02, 'q5': 0.0, 'q6': 0.0, 'q7': 0.0}
+# start = {'x': -1.23, 'y': 5.20, 'z': 0.0,
+#          'roll': 0.0, 'pitch': 0.0, 'yaw': -0.93,
+#          'q1': 0.0, 'q2': -0.05, 'q3': 0.0, 'q4': 0.02, 'q5': 0.0, 'q6': 0.0, 'q7': 0.0}
+start = {'x': 0.0, 'y': 0.0, 'z': 0.0,
          'roll': 0.0, 'pitch': 0.0, 'yaw': 0.0,
          'q1': 0.0, 'q2': -0.05, 'q3': 0.0, 'q4': 0.02, 'q5': 0.0, 'q6': 0.0, 'q7': 0.0}
-        #  'q1': 0.2, 'q2': -1.34, 'q3': -0.2, 'q4': 1.94, 'q5': -1.57, 'q6': 1.37, 'q7': 0.0}
-goal = {'x': -4.6, 'y': -8.5, 'z': 0.0,
+# goal = {'x': 2.8, 'y': -3.8, 'z': 0.0,
+#         'roll': 0.0, 'pitch': 0.0, 'yaw': -1.51,
+#         # 'q1': 1.5, 'q2': -0.09, 'q3': -3.27, 'q4': 1.58, 'q5': -1.78, 'q6': -1.39, 'q7': 0.0}
+#         # 'q1': 0.2, 'q2': -1.34, 'q3': -0.2, 'q4': 1.94, 'q5': -1.57, 'q6': 1.37, 'q7': 0.0}
+#         'q1': 0.33, 'q2': 0.92, 'q3': -1.63, 'q4': 0.51, 'q5': -1.41, 'q6': 0.78, 'q7': 0.0}
+#         # 'q1': 0.046, 'q2': 1.02, 'q3': -2.77, 'q4': 0.77, 'q5': 0.0, 'q6': 0.0, 'q7': 0.0}
+### for IROS:
+# goal = {'x': 6.534, 'y': 0.8, 'z': 0.0,
+#         'roll': 0.0, 'pitch': 0.0, 'yaw': -2.3,
+#         'q1': 0.33, 'q2': 0.92, 'q3': -1.63, 'q4': 0.51, 'q5': -1.41, 'q6': 0.78, 'q7': 0.0}
+
+goal = {'x': 4.0, 'y': 0.0, 'z': 0.0,
         'roll': 0.0, 'pitch': 0.0, 'yaw': 0.0,
-        # 'q1': 1.5, 'q2': -0.09, 'q3': -3.27, 'q4': 1.58, 'q5': -1.78, 'q6': -1.39, 'q7': 0.0}
-        # 'q1': 0.2, 'q2': -1.34, 'q3': -0.2, 'q4': 1.94, 'q5': -1.57, 'q6': 1.37, 'q7': 0.0}
         'q1': 0.0, 'q2': -0.05, 'q3': 0.0, 'q4': 0.02, 'q5': 0.0, 'q6': 0.0, 'q7': 0.0}
-        # 'q1': 0.046, 'q2': 1.02, 'q3': -2.77, 'q4': 0.77, 'q5': 0.0, 'q6': 0.0, 'q7': 0.0}
-safe_config = {'q1': 0.2, 'q2': -1.34, 'q3': -0.2, 'q4': 1.94, 'q5': -1.57, 'q6': 1.37, 'q7': 0.0}
+# safe_config = {'q1': 0.2, 'q2': -1.34, 'q3': -0.2, 'q4': 1.94, 'q5': -1.57, 'q6': 1.37, 'q7': 0.0}
+safe_config = {'q1': 0.72, 'q2': -0.9, 'q3': -0.88, 'q4': 1.94, 'q5': -1.2, 'q6': 1.37, 'q7': 0.0}
 center_activation_safety = 0.8
 ################
 
@@ -50,12 +65,12 @@ class MeshNav(object):
         rospy.init_node('mesh_nav', anonymous=True)
 
         # variables
-        self.path = '/home/rui/ds/testbed/'     # path for files, change this to save in the package
+        self.path = '/home/rui/ds/testscilindros/hard/'     # path for files, change this to save in the package
         self.rate = rospy.Rate(10)              # TODO: make this an argument of launch file
 
         # create classes needed for navigation
         # self.Meshes = RobotMeshState()
-        self.robot_kinematics = RobotKinematics()
+        self.robot_kinematics = RobotKinematics(manipulator)
         self.Graph = GraphManager(self.path+"traversablegroundgraph.pkl")
         self.RM = RobotMeshState(robot_kinematics=self.robot_kinematics)
         self.EBAND = ElasticBandPlanner(robot_kinematics=self.robot_kinematics, k_attraction_base=k_attraction_base, 
@@ -70,7 +85,7 @@ class MeshNav(object):
         obstacle_mesh = o3d.io.read_triangle_mesh(self.path + 'obstacles.ply')
         obstacle_mesh.paint_uniform_color([1.0, 0.72, 0.67]) # pink
         execution_times = []
-        number_of_attempts = 100
+        number_of_attempts = 1
         print("Read obstacles!")
 
         while not rospy.is_shutdown() and number_of_attempts>0:
@@ -81,7 +96,8 @@ class MeshNav(object):
             start_time = time.time()
 
             path = self.Graph.plan(start_coord, end_coord)
-            path = sample_path(path,10)
+            path = sample_path(path, 15) #25
+            path[-1]['yaw'] = goal['yaw']
             # self.plot_path_3d(path, obstacle_mesh)
             # check for collisions all points in the path
             
@@ -89,22 +105,27 @@ class MeshNav(object):
             path = interpolate_path(path,start,goal)
             end_time = time.time()
             print("ORIGINAL PATH. Time: ", end_time - start_time)
-            # self.plot_path_3d(path, obstacle_mesh)
+            self.plot_path_3d(path, obstacle_mesh)
+            # if rospy.is_shutdown():
+            #     exit()
 
             # if there is collisions use some sort of elastic band to move away from the collision
             start_time = time.time()
-            new_path = self.EBAND.update_path(path, obstacle_mesh, self.RM, 100, convergence_threshold=2e-2)
+            new_path = self.EBAND.update_path(path, obstacle_mesh, self.RM, 200, convergence_threshold=2e-2)
             # new_path = path
             end_time = time.time()
             print("Execution time:", end_time - start_time)
+            # save execution time to a CSV file
+            # with open("/home/rui/pcl_ws/src/mesh_nav/data/testscilindros/planning_times.csv", "a") as file:
+            #     file.write(str(end_time - start_time) + "\n")
 
             # self.EBAND.animate_path_evolution(50)
             self.plot_path_3d(new_path, obstacle_mesh)
-            with open("/home/rui/pcl_ws/src/mesh_nav/data/test_path.json", "w") as file:
+            with open("/home/rui/pcl_ws/src/mesh_nav/data//testscilindros/test_hard_path2.json", "w") as file:
                 json.dump(new_path, file, indent=4)
 
             # print(self.RM.robot_state.get_pose(), self.RM.robot_state.joints)
-            exit()
+            # exit()
             execution_times.append(end_time-start_time)
             number_of_attempts -= 1
             self.rate.sleep()
@@ -163,6 +184,43 @@ class MeshNav(object):
 
         o3d.visualization.draw_geometries(all_bbs)
 
+    def import_obstacles(self):
+        obstacle_mesh = o3d.io.read_triangle_mesh(self.path + 'obstacles.ply')
+        obstacle_mesh.paint_uniform_color([1.0, 0.72, 0.67]) # pink
+        return obstacle_mesh
+
+    def import_path(self, path_dir):
+        with open(path_dir, "r") as file:
+            path = json.load(file)
+        return path
+
+
+def generate_colorbar(obstacle_threshold=obstacle_threshold, padding=0.5, cmap='jet'):
+    colormap = plt.get_cmap(cmap)
+    
+    # Create normalized gradient from 0 to obstacle_threshold
+    gradient = np.linspace(0, obstacle_threshold, 256).reshape(-1, 1)  # Make it vertical
+    norm_distance = 1 - np.clip(gradient / obstacle_threshold, 0, 1)  # Normalize between 0 and 1
+    
+    # Display vertical gradient colorbar
+    fig, ax = plt.subplots(figsize=(2, 6))
+    ax.imshow(norm_distance, aspect='auto', cmap=colormap, origin='lower')
+    
+    # Set labels
+    ax.set_ylabel('Distance')
+    ax.set_yticks([0, 128, 256])
+    ax.set_yticklabels([f"{0}", f"{obstacle_threshold/2:.2f}", f"{obstacle_threshold:.2f}"])
+    ax.set_xticks([])
+    ax.set_title("Colormap Distance Representation")
+
+    plt.show()
+
 if __name__ == '__main__':
     mn = MeshNav()
     mn.run()
+    obstacle_mesh = mn.import_obstacles()
+    # path = mn.import_path("/home/rui/pcl_ws/src/mesh_nav/data/irosusingresult1.json")
+    # path = mn.import_path("/home/rui/pcl_ws/src/mesh_nav/data/test_path_goal2.json")
+    
+    # mn.plot_path_3d(path, obstacle_mesh)
+    # generate_colorbar()

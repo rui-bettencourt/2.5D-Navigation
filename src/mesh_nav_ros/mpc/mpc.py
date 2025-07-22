@@ -13,14 +13,14 @@ class MPC(object):
         self.nr_states_base = 8; self.nr_states_arm = 7; self.nr_states = self.nr_states_base + self.nr_states_arm
         self.nr_controls_base = 2; self.nr_controls_arm = 7; self.nr_controls = self.nr_controls_base + self.nr_controls_arm
 
-        self.configs = {'max_Fx': 0.8,  'max_Fyaw': 1.5, 'max_vx':1.0,  'max_vyaw':2.0,  'max_vqs':  1.95,
-                        'min_Fx': -0.8, 'min_Fyaw': -1.5, 'min_vx':-0.5, 'min_vyaw':-2.0, 'min_vqs': -1.95}
+        self.configs = {'max_Fx': 1.0,  'max_Fyaw': 1.0, 'max_vx':0.3,  'max_vyaw':1.57,  'max_vqs':  1.95,
+                        'min_Fx': -1.0, 'min_Fyaw': -1.0, 'min_vx':-0.05, 'min_vyaw':-1.57, 'min_vqs': -1.95}
         with open("/home/rui/pcl_ws/src/mesh_nav/data/joints_limits.json", "r") as file:
             self.joints_limits = json.load(file)
 
         ############# CONSTANTS #########
         # Gains
-        self.alpha          = 1.0
+        self.alpha          = 2.0
         self.beta           = 1.0
         self.gamma          = 0.1
         self.g              = 9.8
@@ -82,7 +82,7 @@ class MPC(object):
                                 0,                  # roll not controlled
                                 0,                  # pitch not controlled
                                 x[7],               # dyaw/dt = vyaw
-                                u[0]-self.g*sin(x[4])*(1-self.motor_strenght),               # dvx/dt = A
+                                u[0], #-self.g*sin(x[4])*(1-self.motor_strenght),               # dvx/dt = A
                                 u[1],               # dvyaw/dt = Fyaw
                                 u[2],               # dq1/dt
                                 u[3],               # dq2/dt
@@ -163,8 +163,8 @@ class MPC(object):
 
         # define cost function
         # for k in range(0,self.N+1):
-        objective += self.alpha * (self.pos_x[self.N] - gs['x'])**2  # euclidean error in x
-        objective += self.alpha * (self.pos_y[self.N] - gs['y'])**2  # euclidean error in y
+        # objective += self.alpha * (self.pos_x[self.N] - gs['x'])**2  # euclidean error in x
+        # objective += self.alpha * (self.pos_y[self.N] - gs['y'])**2  # euclidean error in y
         # objective += self.beta  * (self.q1[self.N] - gs['q1'])**2
         # objective += self.beta  * (self.q2[self.N] - gs['q2'])**2
         # objective += self.beta  * (self.q3[self.N] - gs['q3'])**2
@@ -183,6 +183,8 @@ class MPC(object):
         #     objective -= self.gamma * (self.dq6[k])**2
         #     objective -= self.gamma * (self.dq7[k])**2
         for k in range(1,self.N+1):
+            objective += self.alpha * (self.pos_x[k] - gs['x'])**2  # euclidean error in x
+            objective += self.alpha * (self.pos_y[k] - gs['y'])**2  # euclidean error in y
             objective += self.beta  * (self.q1[k] - gs['q1'])**2
             objective += self.beta  * (self.q2[k] - gs['q2'])**2
             objective += self.beta  * (self.q3[k] - gs['q3'])**2
@@ -201,7 +203,7 @@ class MPC(object):
 
         self.dt = dt
         self.sol = None
-        try:
+        try:    
             self.sol = opti.solve()   # actual solve
             converged = True
         except:
@@ -242,8 +244,9 @@ class MPC(object):
         control['q5'] = self.sol.value(self.q5[i])
         control['q6'] = self.sol.value(self.q6[i])
         control['q7'] = self.sol.value(self.q7[i])
-        for j in range(0,len(self.sol.value(self.q1))):
-            print('q1',j, self.sol.value(self.q1[j]))
+        # for j in range(0,len(self.sol.value(self.q1))):
+        #     print('q1',j, self.sol.value(self.q1[j]))
+        # print(self.sol.value(self.vel_x))
         return control
 
     def update_state(self, start):

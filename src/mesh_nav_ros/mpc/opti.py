@@ -1,7 +1,11 @@
 import numpy as np
 import rospy
 import tf
-from mpc import MPC
+linear = False
+if linear:
+    from mpc_linear import MPC
+else:
+    from mpc import MPC
 import math
 import json
 from functions import Auxiliary
@@ -10,6 +14,7 @@ from sensor_msgs.msg import JointState
 from geometry_msgs.msg import Twist, Vector3
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from std_msgs.msg import Header
+import time
 
 
 class MPCLocalPlanner(object):
@@ -58,6 +63,11 @@ class MPCLocalPlanner(object):
         iteration = 0
         wp = 0
         targets = []
+        #########
+        state = path[0]
+        time_start = time.time()
+        self.mpc.solve_mpc(state, path[1])
+        print("time: ", time.time()-time_start)
 
         while not rospy.is_shutdown():
             if not self.control_robot or (self.base_pose is not None and self.joints_configuration is not None): # check if the robot already received msgs for state estimation
@@ -70,6 +80,7 @@ class MPCLocalPlanner(object):
                 # get current wp index TODO: IMPROVE THIS
                 wp = self.get_next_closest_pose(state, path, wp)
                 targets.append(path[wp])
+                print('goal: ',wp)
 
                 if self.mpc.solve_mpc(state, path[wp]):
                     if not self.control_robot:
@@ -78,10 +89,9 @@ class MPCLocalPlanner(object):
                         self.fs.update_world(self.mpc, title="MPC#" + str(iteration) + " cost: " + str(self.mpc.cost), path=self.real_path)
                     else:
                         control = self.mpc.get_control_pose(i=1)
-                        print('goal q1', path[wp]['q1'])
                         self.control_robot_pubs(control)
-                        # self.fs.update_world(self.mpc, title="MPC#" + str(iteration) + " cost: " + str(self.mpc.cost), path=self.real_path, goal=path[wp])
-
+                        # self.fs.update_world(self.mpc, title="MPC#" + str(iteration) + " cost: " + str(self.mpc.cost), path=self.real_path, goal=path[wp],linear=linear)
+                        print(control)
                 else:
                     # self.fs.update_world(self.mpc, title="MPC#" + str(iteration) + " failed iter ", converged=False, path=self.real_path, goal=path[wp])
                     rospy.logerr('MPC could not solve current iteration')

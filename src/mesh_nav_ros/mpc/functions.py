@@ -91,7 +91,7 @@ class Auxiliary(object):
         plt.show()
         # plt.show(block=False)
 
-    def update_world(self, mpc, converged=True, title=None, path=[], resolution=1.0, goal=None):
+    def update_world(self, mpc, converged=True, title=None, path=[], resolution=1.0, goal=None, linear=False):
         # remove all the previous arrows
         for arrow in self.__arrows:
             arrow.remove()
@@ -125,24 +125,34 @@ class Auxiliary(object):
                     q2_values.append(step['q2'])
                     q3_values.append(step['q3'])
         if converged:
-            # for i in range(len(mpc.sol.value(mpc.pos_x))):
-            #     xs = mpc.sol.value(mpc.pos_x)
-            #     ys = mpc.sol.value(mpc.pos_y)
-            #     yaws = mpc.sol.value(mpc.pos_yaw)
-            for i in range(len(mpc.sol.value(mpc.X[0,:]))):
-                xs = mpc.sol.value(mpc.X[0,:])
-                ys = mpc.sol.value(mpc.X[1,:])
-                yaws = mpc.sol.value(mpc.X[5,:])
+            if linear:
+                for i in range(len(mpc.sol.value(mpc.X[0,:]))):
+                    xs = mpc.sol.value(mpc.X[0,:])
+                    ys = mpc.sol.value(mpc.X[1,:])
+                    yaws = mpc.sol.value(mpc.X[5,:])
 
+                    arrow = self.ax.arrow(xs[i],
+                                ys[i],
+                                np.cos(yaws[i])*resolution*0.4,
+                                np.sin(yaws[i])*resolution*0.4,
+                                color='red',
+                                head_width=resolution*0.2)
 
-                arrow = self.ax.arrow(xs[i],
+                    self.__arrows.append(arrow)
+            else:
+                for i in range(len(mpc.sol.value(mpc.pos_x))):
+                    xs = mpc.sol.value(mpc.pos_x)
+                    ys = mpc.sol.value(mpc.pos_y)
+                    yaws = mpc.sol.value(mpc.pos_yaw)
+
+                    arrow = self.ax.arrow(xs[i],
                             ys[i],
                             np.cos(yaws[i])*resolution*0.4,
                             np.sin(yaws[i])*resolution*0.4,
                             color='red',
                             head_width=resolution*0.2)
 
-                self.__arrows.append(arrow)
+                    self.__arrows.append(arrow)
 
         if self.qs:
             # Update q1 plot

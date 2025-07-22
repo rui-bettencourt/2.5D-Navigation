@@ -20,8 +20,9 @@ else:
 
 ###### variables
 obstacle_threshold=1.5
-min_distance_to_obstacle = 0.0 #5
+min_distance_to_obstacle = 0.1
 # num_samples = 30
+dynamic_safety = True
 center_activation_safety = 0.8
 number_points_robot = 200
 radius_joint = 0.01
@@ -48,10 +49,13 @@ class ElasticBandPlanner:
         self.weak_torque_threshold = 0.1
         self.min_distance_to_obstacle = min_distance_to_obstacle
         self.safe_config = safe_config
+        self.dynamic_safety = dynamic_safety
         if len(safe_config.keys()) == 0:
+            print("No safe config.")
             self.k_safety_joints = 0.0
         self.obstacles_points = None
         self.obs_kdtree = None
+        self.plan_with_manipulator = True if robot_kinematics.dof > 0 else False
         self.history = []  # To store the path evolution
 
     def compute_attractive_force(self, prev_pos, current_pos, next_pos):
@@ -98,10 +102,21 @@ class ElasticBandPlanner:
             mesh2_cropped = mesh2_cropped.simplify_quadric_decimation(2000)
         else:
             mesh2_cropped = mesh2
+            
 
         if len(mesh2_cropped.vertices)>0:
             point_cloud_2 = o3d.geometry.PointCloud()
-            point_cloud_2.points.extend(mesh2_cropped.vertices)
+            vertices = np.asarray(mesh2_cropped.vertices)  # Convert to numpy array
+            num_vertices = vertices.shape[0]  # Get number of vertices
+
+            if num_points > num_vertices:  
+                # raise ValueError(f"num_points ({num_points}) is greater than available vertices ({num_vertices})")
+                sample_points = vertices
+            else:
+                selected_indices = np.random.choice(num_vertices, size=num_points, replace=False)  # Choose indices
+                sample_points = vertices[selected_indices]  # Get the corresponding vertices
+
+            point_cloud_2.points.extend(sample_points)
             pcl_distances = pcl1.compute_point_cloud_distance(point_cloud_2)
             min_distance = min(pcl_distances)
 
@@ -216,13 +231,14 @@ class ElasticBandPlanner:
 
         # Get the previous positions of the arm joints
         # TODO: get the three forward kinematics at the same time to use GPU
-        prev_joint_positions = self.robot.get_arm_endpoints(local_frame=False, pose=current_pos, config=self.path[i-1, 6:])
+        if self.plan_with_manipulator:
+            prev_joint_positions = self.robot.get_arm_endpoints(local_frame=False, pose=current_pos, config=self.path[i-1, 6:])
 
-        # # Get the next positions of the arm joints
-        next_joint_positions = self.robot.get_arm_endpoints(local_frame=False, pose=current_pos, config=self.path[i+1, 6:])
+            # # Get the next positions of the arm joints
+            next_joint_positions = self.robot.get_arm_endpoints(local_frame=False, pose=current_pos, config=self.path[i+1, 6:])
 
-        # # Get the current positions of the arm joints
-        joint_positions = self.robot.get_arm_endpoints(local_frame=False, pose=current_pos, config=self.path[i, 6:])
+            # # Get the current positions of the arm joints
+            joint_positions = self.robot.get_arm_endpoints(local_frame=False, pose=current_pos, config=self.path[i, 6:])
 
         # Get body mesh
         global_bbs = self.RM.simulate_move_joints(self.RM.body_bbs, 'base_link', current_pos)
@@ -232,23 +248,29 @@ class ElasticBandPlanner:
         
         time2 = time.time()
         # # Compute repulsive forces on the arm joints
-        joint_thread_input = []
-        for joint in joint_positions.keys():
-            joint_thread_input.append(joint) #joint, prev_joint_positions, joint_positions, next_joint_positions, robot_mesh, i)
-        with ThreadPoolExecutor() as tpe: # Thread per joint
-            joint_results_threads = list(tpe.map(self.thread_joints, joint_thread_input, [prev_joint_positions]*self.robot.dof, [joint_positions]*self.robot.dof, [next_joint_positions]*self.robot.dof, [robot_mesh]*self.robot.dof, [i]*self.robot.dof))
-            joint_results_threads = np.vstack(joint_results_threads)
-        joints_torques = joint_results_threads.sum(axis=0)
+        if self.plan_with_manipulator:
+            joint_thread_input = []
+            for joint in joint_positions.keys():
+                joint_thread_input.append(joint) #joint, prev_joint_positions, joint_positions, next_joint_positions, robot_mesh, i)
+            if self.dynamic_safety:
+                # self.k_safety_joints = self.k_attraction_joints * (float(path_len)-i)/float(path_len)
+                self.k_safety_joints = self.k_attraction_joints * ((1-np.tanh(i-center_activation_safety*self.path_len))/2)
 
-        new_joints_config = self.path[i, 6:] + self.k_update_joints * joints_torques
-        new_waypoint[6:] = self.bound_joints(new_joints_config)
-        time2 = time.time() - time2
+            with ThreadPoolExecutor() as tpe: # Thread per joint
+                joint_results_threads = list(tpe.map(self.thread_joints, joint_thread_input, [prev_joint_positions]*self.robot.dof, [joint_positions]*self.robot.dof, [next_joint_positions]*self.robot.dof, [robot_mesh]*self.robot.dof, [i]*self.robot.dof))
+                joint_results_threads = np.vstack(joint_results_threads)
+            joints_torques = joint_results_threads.sum(axis=0)
+
+            new_joints_config = self.path[i, 6:] + self.k_update_joints * joints_torques
+            new_waypoint[6:] = self.bound_joints(new_joints_config)
+            time2 = time.time() - time2
 
         time3 = time.time()
         # Compute forces on the robot base
         attractive_force = self.compute_attractive_force(prev_pos[:3], current_pos[:3], next_pos[:3])
         repulsive_force = self.compute_repulsive_force_o3d(robot_mesh) # this repulsive force is calculated in the world frame
         repulsive_force = self.robot.world_to_local(repulsive_force,force=True)
+        # repulsive_force = np.array([0.0,0.0,0.0])
 
         # Compute the orientation attraction force
         orientation_correction_roll = (wrap_angle(self.path[i - 1, 3] - self.path[i, 3])+wrap_angle(self.path[i + 1, 3] - self.path[i, 3]))
@@ -266,7 +288,7 @@ class ElasticBandPlanner:
         #heading_vector = np.array([np.cos(current_pos[2]), np.sin(current_pos[2])])
 
         # Update the position with the total force
-        new_pos = current_pos[:3] + total_force
+        new_pos = self.bound_height(current_pos[:3] + total_force)
 
         # Compute the torque on the robot base from the total force
         base_torque_from_total_force = np.arctan2(total_force[1], total_force[0])
@@ -299,16 +321,16 @@ class ElasticBandPlanner:
         for iteration in range(iterations):
             iter_time = time.time()
             max_change = 0  # Track the maximum change in the path for convergence
-            path_len = len(self.path)
+            self.path_len = len(self.path)
 
             with ThreadPoolExecutor() as tpe: # Thread per joint
-                new_path = list(tpe.map(self.thread_waypoints, range(1, path_len - 1)))
+                new_path = list(tpe.map(self.thread_waypoints, range(1, self.path_len - 1)))
             new_path = np.vstack(new_path)
 
             # Compute the maximum change across all rows
-            max_change = np.max(np.linalg.norm(new_path - self.path[1:(path_len-1)], axis=1))
+            max_change = np.max(np.linalg.norm(new_path - self.path[1:(self.path_len-1)], axis=1))
 
-            self.path[1:(path_len-1)] = new_path
+            self.path[1:(self.path_len-1)] = new_path
             self.history.append(new_path.copy())  # Store the path at each iteration for animation
 
             # If the maximum change is smaller than the threshold, we stop early
@@ -317,6 +339,7 @@ class ElasticBandPlanner:
                 break
             print("Iteration " + str(iteration) + " | maximum change: " + str(max_change) + " | time: " + str(time.time() - iter_time))
 
+        # self.animate_path_evolution()
         return self.path_to_dict(self.path)
 
     def bound_joints(self, values):
@@ -326,6 +349,11 @@ class ElasticBandPlanner:
             elif q > self.robot.joints_limits['q'+str(i+1)][1]:
                 values[i] = self.robot.joints_limits['q'+str(i+1)][1]
         return values
+
+    def bound_height(self, position):
+        # The height is always 0, replace this by checking the traversable graph and depending on the x and y ajust the z
+        position[2]=0.0
+        return position
 
     def path_from_dict(self, path):
         """
@@ -389,3 +417,102 @@ class ElasticBandPlanner:
             converted_path.append(waypoint_dict)
 
         return converted_path
+
+    def animate_path_evolution(self, time_interval=500):
+        """
+        Visualize the path evolution with arrows for forces (attractive and repulsive) on the base,
+        and arcs for angular forces at the joints.
+        Show each robot position as a blue circle and draw the arm at each step.
+        Display the iteration number for better tracking.
+        Also visualize arm joints and configuration for every base position in every iteration.
+        """
+        fig, ax = plt.subplots()
+        # Find the min and max for x and y
+        self.history = np.asarray(self.history)
+        x_min = np.min(self.history[:,:,0])
+        x_max = np.max(self.history[:,:,0])
+        y_min = np.min(self.history[:,:,1])
+        y_max = np.max(self.history[:,:,1])
+        ax.set_xlim(x_min-1, x_max+1)
+        ax.set_ylim(y_min-1, y_max+1)
+
+        # Create a colormap that fades from a color to transparent
+        cmap = plt.cm.Greys_r  # You can use any color map you like
+        norm = Normalize(vmin=0, vmax=1)
+        radius = 0.5
+
+
+        # Initialize robot circles for each position in the path history
+        robot_circles = []
+        yaw_arrows = []
+        radius = 0.32
+        for _ in range(len(self.history[0])):
+            circle = plt.Circle((0, 0), radius, color='blue', fill=False, lw=2)
+            ax.add_patch(circle)
+            robot_circles.append(circle)
+
+            # Initialize yaw arrow
+            arrow = ax.arrow(0, 0, 0, 0, head_width=0.1, color='blue')
+            yaw_arrows.append(arrow)
+
+        # List to store lines representing the arm for every position
+        # arm_lines = []
+        # joint1_markers = []
+        # joint2_markers = []
+
+        # Create empty lines and markers for each arm and joint position in the path
+        # for _ in range(len(self.history[0])):
+        #     # Arm line from base to joint1 to joint2
+        #     arm_line, = ax.plot([], [], 'm-', lw=2)
+        #     arm_lines.append(arm_line)
+
+        #     # Joint 1 and Joint 2 markers
+        #     joint1_marker, = ax.plot([], [], 'yo', markersize=8)
+        #     joint2_marker, = ax.plot([], [], 'co', markersize=8)
+        #     joint1_markers.append(joint1_marker)
+        #     joint2_markers.append(joint2_marker)
+
+        # Text for iteration number
+        iteration_text = ax.text(0.02, 0.95, '', transform=ax.transAxes)
+
+        def update(frame):
+            current_path = self.history[frame]
+
+            # Update robot circles and arm configurations for each base position
+            for i, circle in enumerate(robot_circles):
+                current_base_pos = current_path[i, :4]
+                circle.center = (current_base_pos[0], current_base_pos[1])
+
+                # Update yaw arrow
+                yaw_angle = current_path[i, 5] 
+                arrow_length = 0.5  # Length of the yaw arrow
+                yaw_arrows[i].remove()  # Remove the previous arrow
+                yaw_arrows[i] = ax.arrow(current_base_pos[0], current_base_pos[1], 
+                                        arrow_length * np.cos(yaw_angle), 
+                                        arrow_length * np.sin(yaw_angle), 
+                                        head_width=0.1, color='blue')
+
+                self.robot.set_robot_pose(current_base_pos[0], current_base_pos[1], current_base_pos[2], current_base_pos[3])
+                # self.robot.set_joint_angles(current_path[i, 3], current_path[i, 4])
+
+                # Get the arm's joint positions
+                # joint_positions = self.robot.get_arm_endpoints()
+
+                # Update arm line (from base to joint1 to joint2)
+                # arm_lines[i].set_data([current_base_pos[0], joint_positions['joint1'][0], joint_positions['joint2'][0]],
+                                    # [current_base_pos[1], joint_positions['joint1'][1], joint_positions['joint2'][1]])
+
+                # Update joint marker positions
+                # joint1_markers[i].set_data([joint_positions['joint1'][0]], [joint_positions['joint1'][1]])
+                # joint2_markers[i].set_data([joint_positions['joint2'][0]], [joint_positions['joint2'][1]])
+
+
+            # Update the iteration number
+            iteration_text.set_text(f"Iteration: {frame + 1}")
+
+            # Return all objects that are drawn in each frame
+            return (*robot_circles,*yaw_arrows, iteration_text)
+
+        # Create animation
+        anim = FuncAnimation(fig, update, frames=len(self.history), interval=time_interval, repeat=False)
+        plt.show()

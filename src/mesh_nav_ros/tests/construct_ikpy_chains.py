@@ -3,6 +3,7 @@ from ikpy.link import OriginLink, URDFLink
 from urdf_parser_py.urdf import URDF
 import numpy as np
 import json
+import pickle
 
 def create_ikpy_chain_from_urdf(urdf_file, base_links, end_link):
     """

@@ -5,8 +5,8 @@ from roboticstoolbox import ERobot
 
 # ROBOT
 class RobotKinematics:
-    def __init__(self, x=0, y=0, z=0, roll=0.0, pitch=0.0, yaw=0.0, joints_angles=None):
-        if joints_angles is None:
+    def __init__(self, manipulator_used, x=0, y=0, z=0, roll=0.0, pitch=0.0, yaw=0.0, joints_angles=None):
+        if joints_angles is None and manipulator_used:
             joints_angles = [0.0] * 7
 
         self.x = x
@@ -19,28 +19,33 @@ class RobotKinematics:
         self.joints_limits = {}
 
         # Load the robot model from URDF
-        urdf_file = '/home/rui/socrob_ws/src/isr_tiago/simulation/mbot_simulation_environments/robots/tiago_ouster_pybullet.urdf'
-        self.robot = ERobot.URDF(urdf_file)
+        if manipulator_used:
+            urdf_file = '/home/rui/socrob_ws/src/isr_tiago/simulation/mbot_simulation_environments/robots/tiago_ouster_pybullet.urdf'
+            self.robot = ERobot.URDF(urdf_file)
+            # print(self.robot.__dict__)
+            # exit()
 
-        blacklisted_joints = ['torso_lift_link']
-        # Assuming self.robot is an instance of ERobot
-        self.num_links = self.robot.n
-        self.joints_names = {}
-        for i, link in enumerate(self.robot.links):
-            if link.isjoint and link.name not in blacklisted_joints:
-                self.joints_names[i] = link.name
-            # print(f"Joint Name: {link.name}")
+            blacklisted_joints = ['torso_lift_link']
+            # Assuming self.robot is an instance of ERobot
+            self.num_links = self.robot.n
+            self.joints_names = {}
+            for i, link in enumerate(self.robot.links):
+                if link.isjoint and link.name not in blacklisted_joints:
+                    self.joints_names[i] = link.name
+                # print(f"Joint Name: {link.name}")
 
 
-        # Define the end-effector link
-        self.ee_link = "arm_7_link"
-        self.dof = 7
+            # Define the end-effector link
+            self.ee_link = "arm_7_link"
+            self.dof = 7
 
-        # Extract joint limits
-        for i, lname in enumerate(self.joints_names.values()):
-            link=self.robot.link_dict[lname]
-            tag = f'q{i+1}'
-            self.joints_limits[tag] = [link.qlim[0], link.qlim[1]]
+            # Extract joint limits
+            for i, lname in enumerate(self.joints_names.values()):
+                link=self.robot.link_dict[lname]
+                tag = f'q{i+1}'
+                self.joints_limits[tag] = [link.qlim[0], link.qlim[1]]
+        else:
+            self.dof = 0
 
     def forward_kinematics(self, joints_angles):
         angles = np.append((self.num_links-7) * [0.0], joints_angles)
@@ -245,7 +250,7 @@ class RobotKinematics:
         return complete_torques, J
 
 if __name__ == '__main__':
-    a = RobotKinematics()
+    a = RobotKinematics(manipulator_used=True)
     c = a.get_arm_endpoints(config=[0.0]*7)
     print(c)
     b = a.calculate_jacobians(joint=7,joints_angles=[0.0]*7)
