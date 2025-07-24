@@ -1,0 +1,6 @@
+[submodule "external/TriangleMeshDistance"]
+	path = external/TriangleMeshDistance
+	url = https://github.com/InteractiveComputerGraphics/TriangleMeshDistance.git
+[submodule "external/tinyply"]
+	path = external/tinyply
+	url = https://github.com/ddiakopoulos/tinyply
