@@ -23,6 +23,8 @@ public:
         double& distance,
         Eigen::RowVector3d& closest_point) const;
 
+    const Eigen::MatrixXd& getVertices() const { return V_; }
+
 private:
     Eigen::MatrixXd V_;
     Eigen::MatrixXi F_;
