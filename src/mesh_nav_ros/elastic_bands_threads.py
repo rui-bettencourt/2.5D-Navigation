@@ -144,6 +144,7 @@ class ElasticBandPlanner:
         return force
 
     def compute_repulsive_force_o3d(self, robot_mesh): #TODO_ REPLACE IN THIS FUNCTION THE BIG CHUNK BY THE COMPUTE DISTANCE FUNCTION
+        # t1 = time.time()
         bb = robot_mesh.get_axis_aligned_bounding_box()
         bb.scale(2.0,bb.get_center())
         # simplify obstacle mesh
@@ -153,6 +154,8 @@ class ElasticBandPlanner:
 
         if len(obstacle_mesh_cropped.vertices)>0:
             min_distance, direction_vector = self.compute_2mesh_distance(robot_mesh,obstacle_mesh_cropped, crop=False)
+            # duration = (time.time() - t1)*1000
+            # print("Time to compute distance: " + str(duration) + " ms")
 
             return self.compute_force_from_dist(min_distance, direction_vector)
         else: 

@@ -45,8 +45,10 @@ class RobotMeshState(object):
             # Load the URDF model
             self.robot = URDF.from_parameter_server()
         except Exception as e:
-            rospy.logwarn(f"Failed to load urdf. Make sure this is a node and the robot/simulation is running")
-            exit()
+            rospy.logwarn(f"Failed to load urdf. Make sure this is a node and the robot/simulation is running. Will load from file")
+            # exit()
+            with open('/home/rui/socrob_ws/src/isr_tiago/simulation/mbot_simulation_environments/robots/tiago_ouster.urdf', 'r') as urdf_file:
+                self.robot = URDF.from_xml_string(urdf_file.read())
 
         #########Configs
         joint_states_topic = "/joint_states"
@@ -59,6 +61,7 @@ class RobotMeshState(object):
         ## variables
         self.robot_kinematics = robot_kinematics
         self.robot_mesh = None
+        self.only_body_mesh = False
         self.robot_mesh_dict = {}
         self.og_mesh_dict = {}
         self.robot_state = Pose()
@@ -117,19 +120,19 @@ class RobotMeshState(object):
         for link in self.robot.links:
             if link.name == self.robot.get_root():
                 continue
-
-            try:
-                (trans, rot) = listener.lookupTransform('/base_link', link.name, rospy.Time(0))
-            except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
-                continue
-            for visual in link.visuals:
-                mesh = self.load_mesh_from_geometry(visual.geometry)
-                if mesh:
-                    transformation = np.eye(4)
-                    transformation[:3, :3] = tf.transformations.quaternion_matrix(rot)[:3, :3]
-                    transformation[:3, 3] = np.array(trans)
-                    mesh.transform(transformation)
-                    meshes.append(mesh)
+            if self.only_body_mesh and link.name not in self.not_body:
+                try:
+                    (trans, rot) = listener.lookupTransform('/base_link', link.name, rospy.Time(0))
+                except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
+                    continue
+                for visual in link.visuals:
+                    mesh = self.load_mesh_from_geometry(visual.geometry)
+                    if mesh:
+                        transformation = np.eye(4)
+                        transformation[:3, :3] = tf.transformations.quaternion_matrix(rot)[:3, :3]
+                        transformation[:3, 3] = np.array(trans)
+                        mesh.transform(transformation)
+                        meshes.append(mesh)
 
         if meshes:
             combined_mesh = meshes[0]
@@ -463,17 +466,19 @@ if __name__ == '__main__':
     from robot_kinematics import RobotKinematics
     robot_kinematics = RobotKinematics()
     rospy.init_node('debug_mesh', anonymous=True)
-    path = '/home/rui/ds/testbed/'
+    path = '/home/rui/ds/testsiros2025/'
     mc = RobotMeshState(robot_kinematics)
-    start = {'x': -11.0, 'y': -8.0, 'z': 0.0,
-         'roll': 0.0, 'pitch': 0.0, 'yaw': 0.0,
-         'q1': 0.2, 'q2': -1.34, 'q3': -0.2, 'q4': 1.94, 'q5': -1.57, 'q6': 1.37, 'q7': 0.0}
-    meshes = mc.update_robot_arm_bbs(start,move_base = True, local_frame = False)
-    combined_mesh = o3d.geometry.TriangleMesh()
-    for mesh in meshes.values():
-        combined_mesh += mesh
-    combined_mesh.paint_uniform_color([1.0,0.0,0.0])
-    combined_mesh.compute_vertex_normals()
-    o3d.visualization.draw_geometries([combined_mesh])
-    # mc.save_mesh(path+'test.ply')
-    rospy.spin()
+    # start = {'x': 0.0, 'y': 0.0, 'z': 0.0,
+    #      'roll': 0.0, 'pitch': 0.0, 'yaw': 0.0,
+    #      'q1': 0.2, 'q2': -1.34, 'q3': -0.2, 'q4': 1.94, 'q5': -1.57, 'q6': 1.37, 'q7': 0.0}
+    # meshes = mc.update_robot_arm_bbs(start,move_base = True, local_frame = False)
+    # combined_mesh = o3d.geometry.TriangleMesh()
+    # for mesh in meshes.values():
+    #     combined_mesh += mesh
+    # combined_mesh.paint_uniform_color([1.0,0.0,0.0])
+    # combined_mesh.compute_vertex_normals()
+    # o3d.visualization.draw_geometries([combined_mesh])
+    o3d.visualization.draw_geometries([mc.robot_mesh])
+    mc.save_mesh(path+'robot_no_arms.ply')
+    print("done")
+    # rospy.spin()

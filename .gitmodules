@@ -1,6 +1,10 @@
-[submodule "external/TriangleMeshDistance"]
-	path = external/TriangleMeshDistance
-	url = https://github.com/InteractiveComputerGraphics/TriangleMeshDistance.git
+[submodule "external/ligigl"]
+	path = external/ligigl
+	url = https://github.com/libigl/libigl.git
+[submodule "external/openvdb"]
+	path = external/openvdb
+	url = git@github.com:AcademySoftwareFoundation/openvdb.git
+	branch = v9.0.0
 [submodule "external/tinyply"]
 	path = external/tinyply
-	url = https://github.com/ddiakopoulos/tinyply
+	url = https://github.com/ddiakopoulos/tinyply.git

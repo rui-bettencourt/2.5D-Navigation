@@ -6,6 +6,7 @@
 class VoxelGrid
 {
 public:
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     struct VoxelQuery
     {
         Eigen::Vector3i index;   // Base voxel (i,j,k)

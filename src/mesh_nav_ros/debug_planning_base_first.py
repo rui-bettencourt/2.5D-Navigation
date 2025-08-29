@@ -65,7 +65,8 @@ class MeshNav(object):
         rospy.init_node('mesh_nav', anonymous=True)
 
         # variables
-        self.path = '/home/rui/ds/testscilindros/hard/'     # path for files, change this to save in the package
+        # self.path = '/home/rui/ds/testscilindros/hard/'     # path for files, change this to save in the package
+        self.path = '/home/rui/ds/testsiros2025/'     # path for files, change this to save in the package
         self.rate = rospy.Rate(10)              # TODO: make this an argument of launch file
 
         # create classes needed for navigation

@@ -351,3 +351,20 @@ class RobotKinematics:
 
         complete_torques = np.append(joint_torques[1:],joints_not_used)
         return complete_torques, J
+
+if __name__ == '__main__':
+    a = RobotKinematics()
+    t1 = time.time()
+    c = a.get_arm_endpoints(local_frame=True, config=[0.0]*7)
+    print("Python forward kinematics time: " + str((time.time()-t1)*1000) + " ms")
+    print(c)
+    t2 = time.time()
+    # b = a.calculate_jacobians(joint=1,joints_angles=[0.0]*7)
+    # b = a.calculate_jacobians(joint=2,joints_angles=[0.0]*7)
+    # b = a.calculate_jacobians(joint=3,joints_angles=[0.0]*7)
+    # b = a.calculate_jacobians(joint=4,joints_angles=[0.0]*7)
+    # b = a.calculate_jacobians(joint=5,joints_angles=[0.0]*7)
+    # b = a.calculate_jacobians(joint=6,joints_angles=[0.0]*7)
+    b = a.calculate_jacobians(joint=1,joints_angles=[0.0]*7)
+    print("Python jacobians time: " + str((time.time()-t2)*1000) + " ms")
+    print(b)

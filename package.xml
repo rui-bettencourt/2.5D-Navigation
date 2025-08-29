@@ -50,6 +50,10 @@
   <buildtool_depend>catkin</buildtool_depend>
   <depend>roscpp</depend>
   <depend>stdmsgs</depend>
+  <build_depend>pinocchio</build_depend>
+  <exec_depend>pinocchio</exec_depend>
+  <build_depend>pybind11</build_depend>
+  <exec_depend>pybind11</exec_depend>
 
 
   <!-- The export tag contains other, unspecified, tags -->

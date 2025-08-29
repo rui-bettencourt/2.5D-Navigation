@@ -9,10 +9,11 @@ RobotKinematics::RobotKinematics(const std::string& urdf_path, const std::string
     : base_frame(base_link), end_effector(ee_link)
 {
     if(use_pinocchio){
-        pinocchio::urdf::buildModel(urdf_path, model);
-        std::cout << "model name: " << model.name << std::endl;
+        model = std::make_unique<pinocchio::Model>();
+        pinocchio::urdf::buildModel(urdf_path, *model);
+        std::cout << "model name: " << model->name << std::endl;
         // Create data required by the algorithms
-        data = pinocchio::Data(model);
+        data = std::make_unique<pinocchio::Data>(*model);
         updateJointsNames(joint_names);
     }else{
         Eigen::VectorXd q = Eigen::VectorXd::Zero(7);
@@ -25,15 +26,61 @@ RobotKinematics::RobotKinematics(const std::string& urdf_path, const std::string
     loadJointLimits("data/joints_limits.json", joint_names);
 }
 
+// --- deep copy ctor ---
+RobotKinematics::RobotKinematics(const RobotKinematics& o)
+: joint_ids(o.joint_ids)
+, num_joints(o.num_joints)
+, base_frame(o.base_frame)
+, end_effector(o.end_effector)
+, base_pose(o.base_pose)
+, joint_limits(o.joint_limits)
+{
+  // Deep-copy Pinocchio model/data
+  if (o.model) {
+    model = std::make_unique<pinocchio::Model>(*o.model);
+    data  = std::make_unique<pinocchio::Data>(*model);
+  } else {
+    model.reset();
+    data.reset();
+  }
+
+  // If you have any other caches/ids derived from the model, rebuild them here.
+}
+
+// --- deep assignment ---
+RobotKinematics& RobotKinematics::operator=(const RobotKinematics& o)
+{
+  if (this == &o) return *this;
+
+  joint_ids   = o.joint_ids;
+  num_joints  = o.num_joints;
+  base_frame  = o.base_frame;
+  end_effector= o.end_effector;
+  base_pose   = o.base_pose;
+  joint_limits= o.joint_limits;
+
+  if (o.model) {
+    model = std::make_unique<pinocchio::Model>(*o.model);
+    data  = std::make_unique<pinocchio::Data>(*model);
+  } else {
+    model.reset();
+    data.reset();
+  }
+
+  // Rebuild any derived caches here if you maintain them.
+
+  return *this;
+}
+
 void RobotKinematics::updateJointsNames(const std::vector<std::string>& joint_names)
 {
     std::cout << "Updating joints names" << std::endl;
     joint_ids.clear();
     for (const auto& name : joint_names)
     {
-        pinocchio::JointIndex joint_id = model.getJointId(name);
+        pinocchio::JointIndex joint_id = model->getJointId(name);
 
-        if (joint_id == 0 || joint_id >= model.njoints)
+        if (joint_id == 0 || joint_id >= model->njoints)
             throw std::invalid_argument("Invalid joint name: " + name);
 
         joint_ids.push_back(joint_id);
@@ -41,7 +88,7 @@ void RobotKinematics::updateJointsNames(const std::vector<std::string>& joint_na
     std::cout << "Finished update" << std::endl;
 }
 
-std::vector<Eigen::Vector3d> RobotKinematics::getJointPositions(
+std::vector<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d>> RobotKinematics::getJointPositions(
     const Eigen::VectorXd& q)
 {
     if(use_pinocchio){
@@ -70,54 +117,122 @@ Eigen::MatrixXd RobotKinematics::computeJacobian(const Eigen::VectorXd& q, int t
 
 }
 
-Eigen::MatrixXd RobotKinematics::computeJacobiansPinocchio(const Eigen::VectorXd& q, int target_joint_idx)
+Eigen::MatrixXd RobotKinematics::computeJacobiansPinocchio(const Eigen::VectorXd& q_manip,
+                                                           int target_joint_idx)
 {
-    // Make sure FK and placements are up-to-date
-    // pinocchio::forwardKinematics(model, data, q);
-    // pinocchio::updateFramePlacements(model, data);
+    if(!use_pinocchio)
+        throw std::runtime_error("computeJacobiansPinocchio called in manual mode");
 
+    if (target_joint_idx < 1 || target_joint_idx > static_cast<int>(joint_ids.size()))
+        throw std::invalid_argument("Invalid target_joint_idx");
 
-    Eigen::MatrixXd J(6, model.nv);
-    // pinocchio::computeFrameJacobian(model, data, q, frame_id, J, pinocchio::LOCAL_WORLD_ALIGNED);
-    pinocchio::computeJointJacobian(model, data, q, target_joint_idx, J);
+    // 1) Map 7-DoF manip vector -> full model configuration
+    Eigen::VectorXd q_full = packToModelConfig(q_manip);
 
-    std::cout << "J shape: " << J.rows() << " x " << J.cols() << std::endl;
-    return J;
+    // 2) Update kinematics
+    pinocchio::forwardKinematics(*model, *data, q_full);
+
+    // 3) Compute all joint Jacobians (fills data->JS)
+    pinocchio::computeJointJacobians(*model, *data, q_full);
+
+    // 4) Update placements (your version uses updateGlobalPlacements)
+    pinocchio::updateGlobalPlacements(*model, *data);
+
+    // 5) Extract 6×nv Jacobian for the *target joint* in WORLD frame
+    Eigen::MatrixXd J_full(6, model->nv);
+    J_full.setZero();
+    const pinocchio::JointIndex jid_target = joint_ids[target_joint_idx - 1];
+    pinocchio::getJointJacobian(*model, *data, jid_target, pinocchio::ReferenceFrame::WORLD, J_full);
+
+    // 6) Reduce to 6 × target_joint_idx (your manipulator joints only)
+    Eigen::MatrixXd J_red = sliceToManipulator(J_full, target_joint_idx);
+
+    return J_red;
 }
+
 
 size_t RobotKinematics::getDOF() const
 {
     if(use_pinocchio){
-        return model.nq;  // or model.nv
+        return num_joints;  // or model.nv
     }else{
         return 7;
     }
 }
 
-std::vector<Eigen::Vector3d> RobotKinematics::forwardKinematicsPinocchio(
+std::vector<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d>> RobotKinematics::forwardKinematicsPinocchio(
     const Eigen::VectorXd& q)
 {
-    std::cout << "Starting forward kinematics" << std::endl;
+    Eigen::VectorXd q_full = packToModelConfig(q);
+    // std::cout << "Starting forward kinematics" << std::endl;
     // Compute forward kinematics once
-    pinocchio::forwardKinematics(model, data, q);
+    pinocchio::forwardKinematics(*model, *data, q_full);
 
-    std::cout << "Initializing positions vector" << std::endl;
-    std::vector<Eigen::Vector3d> positions;
+    // std::cout << "Initializing positions vector" << std::endl;
+    std::vector<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d>> positions;
     positions.reserve(joint_ids.size());  // avoid reallocations
 
-    std::cout << "Pushing results" << std::endl;
+    // std::cout << "Pushing results" << std::endl;
     for (auto joint_id : joint_ids)
-        positions.push_back(data.oMi[joint_id].translation());
+        positions.push_back(data->oMi[joint_id].translation());
 
     return positions;
 }
 
+// Build a full-size configuration from a 7-DoF manip vector.
+// Assumes each manip joint has nq()==1 (revolute/prismatic). Adjust if needed.
+Eigen::VectorXd RobotKinematics::packToModelConfig(const Eigen::VectorXd& q_manip) const
+{
+    if(!use_pinocchio) return q_manip; // manual branch uses 7-dim already
 
-std::vector<Eigen::Vector3d> RobotKinematics::forwardKinematicsManual(const Eigen::VectorXd& q) {
+    if(static_cast<int>(q_manip.size()) != static_cast<int>(joint_ids.size()))
+        throw std::invalid_argument("q_manip size != number of manip joints");
+
+    // Start from neutral (or cached default) so all non-manip joints are well-defined
+    Eigen::VectorXd q_full = pinocchio::neutral(*model);
+
+    for (int k = 0; k < static_cast<int>(joint_ids.size()); ++k) {
+        const pinocchio::JointIndex jid = joint_ids[k];
+        const auto &jmodel = model->joints[jid];
+        const int iq = model->idx_qs[jid];
+        const int nqj = jmodel.nq();            // expected 1
+        if (nqj != 1) {
+            throw std::runtime_error("packToModelConfig: joint " + model->names[jid] +
+                                     " has nq=" + std::to_string(nqj) +
+                                     " (only nq==1 supported in this mapper)");
+        }
+        q_full[iq] = q_manip[k];
+    }
+    return q_full;
+}
+
+// Slice a 6×nv Jacobian (WORLD frame) down to 6×cols, taking only the columns
+// for manipulator joints 0..cols-1 (by joint_ids order). Assumes nv(j)=1.
+Eigen::MatrixXd RobotKinematics::sliceToManipulator(const Eigen::MatrixXd &J_full,
+                                                    int cols) const
+{
+    Eigen::MatrixXd J_red(6, cols);
+    for (int k = 0; k < cols; ++k) {
+        const pinocchio::JointIndex jid = joint_ids[k];
+        const auto &jmodel = model->joints[jid];
+        const int iv = model->idx_vs[jid];
+        const int nvj = jmodel.nv();            // expected 1
+        if (nvj != 1) {
+            throw std::runtime_error("sliceToManipulator: joint " + model->names[jid] +
+                                     " has nv=" + std::to_string(nvj) +
+                                     " (only nv==1 supported here)");
+        }
+        // Take the single column for that joint’s velocity DoF
+        J_red.col(k) = J_full.col(iv);
+    }
+    return J_red;
+}
+
+std::vector<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d>> RobotKinematics::forwardKinematicsManual(const Eigen::VectorXd& q) {
     std::vector<Eigen::Isometry3d> transforms;
     createManualTransforms(transforms, q);
 
-    std::vector<Eigen::Vector3d> positions;
+    std::vector<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d>> positions;
     positions.reserve(transforms.size());
 
     Eigen::Isometry3d current = Eigen::Isometry3d::Identity();
@@ -206,31 +321,32 @@ void RobotKinematics::createManualTransforms(std::vector<Eigen::Isometry3d>& tra
     transforms.push_back(Eigen::Isometry3d::Identity());
 }
 
-Eigen::MatrixXd RobotKinematics::computeJacobiansManual(const Eigen::VectorXd& q, int target_joint_idx) {
-    // IMPORTANT: this function computes geometric Jacobian through the forward kinematic, not using derivatives. For more accurate Jacobian i can derive the analytical jacobian.
-        // Safety check
-    if (target_joint_idx < 0 || target_joint_idx > num_joints) {
+Eigen::MatrixXd RobotKinematics::computeJacobiansManual(const Eigen::VectorXd& q,
+                                                        int target_joint_idx)
+{
+    // target_joint_idx is 1..num_joints (your API uses 1-based here)
+    if (target_joint_idx < 1 || target_joint_idx > num_joints)
         throw std::invalid_argument("Invalid target_joint_idx");
-    }
 
-    Eigen::Matrix<double, 6, Eigen::Dynamic> J(6, target_joint_idx);
+    const int cols = target_joint_idx; // number of active joints to the target
+    Eigen::Matrix<double,6,Eigen::Dynamic> J(6, cols);
     J.setZero();
 
-    // Get forward transforms T_0_i for each joint i
+    // Forward kinematics to each joint frame (0..num_joints-1)
     std::vector<Eigen::Isometry3d> T;
     createManualTransforms(T, q);
+    // T.size() should be >= num_joints, with T[j] = world->joint_j
 
-    Eigen::Vector3d p_target = T[target_joint_idx-1].translation();  // position of the target link
+    const Eigen::Vector3d p_target = T[target_joint_idx - 1].translation();
 
-    for (int i = 1; i < target_joint_idx; ++i) {
-        Eigen::Vector3d zi = T[i].rotation().col(2);     // z-axis of joint i
-        Eigen::Vector3d pi = T[i].translation();         // position of joint i
-        Eigen::Vector3d diff = p_target - pi;
+    for (int j = 0; j < cols; ++j) {
+        const Eigen::Vector3d z_j = T[j].rotation().col(2);  // world z-axis of joint j
+        const Eigen::Vector3d p_j = T[j].translation();      // world position of joint j
+        const Eigen::Vector3d r   = p_target - p_j;
 
-        J.block<3,1>(0, i) = zi.cross(diff);             // linear velocity
-        J.block<3,1>(3, i) = zi;                         // angular velocity
+        J.block<3,1>(0, j) = z_j.cross(r); // linear part
+        J.block<3,1>(3, j) = z_j;          // angular part
     }
-
     return J;
 }
 
@@ -247,20 +363,42 @@ Eigen::VectorXd RobotKinematics::calculateJointTorques(const Eigen::Vector3d& fo
                                                        const Eigen::VectorXd& q,
                                                        const Eigen::MatrixXd* J_ptr)
 {
-    // Compute Jacobian for the target joint
-    Eigen::MatrixXd J;
-    if (J_ptr)
-        J = *J_ptr;
-    else
-        J = computeJacobian(q, joint_id);
+    const int dof = static_cast<int>(getDOF());
+    Eigen::VectorXd tau = Eigen::VectorXd::Zero(dof);
+    if (dof <= 0 || joint_id <= 0) return tau;
 
-    // Only use translational rows (top 3 rows of J)
-    Eigen::MatrixXd Jv = J.block(0, 0, 3, J.cols());
+    // Manual mode: 6 × joint_id; Pinocchio: 6 × nv
+    Eigen::MatrixXd J = J_ptr ? *J_ptr : computeJacobian(q, joint_id);
+    if (J.rows() != 6) return tau; // robust guard
 
-    // tau = J^T * F
-    Eigen::VectorXd tau = Jv.transpose() * force;
+    const int jcols_int = static_cast<int>(J.cols());
+    const int ncols = std::min(jcols_int, std::min(joint_id, dof));
+    if (ncols <= 0) return tau;
+
+    // Spatial force: linear part only
+    Eigen::Matrix<double,6,1> F;
+    F << force, 0.0, 0.0, 0.0;
+
+    // Torques for joints [1..ncols] only
+    const Eigen::VectorXd tau_partial = J.leftCols(ncols).transpose() * F; // (ncols×1)
+    tau.head(ncols) = tau_partial;  // pad to DOF
+
+
+    // std::cout << "[calculateJointTorques] joint_id=" << joint_id
+    //         << " J=(" << J.rows() << "x" << J.cols() << ")"
+    //         << " ncols=" << ncols
+    //         << " tau_partial.size()=" << tau_partial.size()
+    //         << " tau.size()=" << tau.size()
+    //         << std::endl;
+
+    const int show = std::min<int>(dof, 10);
+    // std::cout << "tau[0.." << show-1 << "]: ";
+    // for (int i = 0; i < show; ++i) std::cout << tau[i] << ' ';
+    //     std::cout << std::endl;
+
     return tau;
 }
+
 
 std::map<std::string, std::pair<double,double>> RobotKinematics::getJointsLimits() const
 {
@@ -273,10 +411,10 @@ std::map<std::string, std::pair<double,double>> RobotKinematics::getJointsLimits
 
     if (use_pinocchio) {
         for (const auto& jid : joint_ids) {
-            const auto& jmodel = model.joints[jid];
-            std::string name = model.names[jid];
-            Eigen::VectorXd lower = model.lowerPositionLimit.segment(model.idx_qs[jid], jmodel.nq());
-            Eigen::VectorXd upper = model.upperPositionLimit.segment(model.idx_qs[jid], jmodel.nq());
+            const auto& jmodel = model->joints[jid];
+            std::string name = model->names[jid];
+            Eigen::VectorXd lower = model->lowerPositionLimit.segment(model->idx_qs[jid], jmodel.nq());
+            Eigen::VectorXd upper = model->upperPositionLimit.segment(model->idx_qs[jid], jmodel.nq());
             limits[name] = { lower[0], upper[0] };
         }
     } else {
@@ -369,4 +507,31 @@ std::pair<double,double> RobotKinematics::getJointLimit(const std::string& joint
     if(it == joint_limits.end())
         throw std::invalid_argument("Joint " + joint_name + " not found in limits");
     return it->second;
+}
+
+void RobotKinematics::debugPrint(const char* tag) const {
+  // Adjust these to your real members
+  const int dof = getDOF();
+  std::cout << "[RK " << (tag ? tag : "") << "] dof=" << dof
+            << " model@" << modelAddress()
+            << " data@"  << dataAddress()
+            << "\n";
+  // If you have names/limits, print sizes (don’t spam names)
+  // std::cout << "  limits: lower=" << lower_.size() << " upper=" << upper_.size() << "\n";
+}
+
+const void* RobotKinematics::modelAddress() const {
+  // If you store a unique_ptr, return pointer value; if by value, return &model
+  // return static_cast<const void*>(model_.get());
+  // or:
+  // return static_cast<const void*>(&model);
+  // Replace with your actual member:
+  return model.get(); // TODO: replace with real
+}
+
+const void* RobotKinematics::dataAddress() const {
+  // return static_cast<const void*>(data_.get());
+  // or:
+  // return static_cast<const void*>(&data);
+  return data.get(); // TODO: replace with real
 }

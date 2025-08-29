@@ -12,6 +12,8 @@ find_package(OpenVDB REQUIRED)
 find_package(TBB REQUIRED)
 find_package(OpenMP REQUIRED)
 find_package(pybind11 REQUIRED)
+find_package(pinocchio REQUIRED)
+
 
 # include_directories(/usr/local/include)
 # link_directories(/usr/local/lib)
@@ -26,8 +28,8 @@ link_directories(/usr/local/lib)
 
 # Add its include directories
 include_directories(/usr/local/include/eigen3)
-include_directories(${PINOCCHIO_INCLUDE_DIRS})
-link_directories(${PINOCCHIO_LIBRARY_DIRS})
+# include_directories(${PINOCCHIO_INCLUDE_DIRS})
+# link_directories(${PINOCCHIO_LIBRARY_DIRS})
 
 # Add include directory
 # include_directories(${CMAKE_CURRENT_SOURCE_DIR}/external/TriangleMeshDistance)
@@ -74,12 +76,13 @@ catkin_package(
 ###########
 
 ### Create a cpp API to use Pinocchio with Tiago
-add_library(robot_kinematics
+add_library(RobotKinematics
   src/mesh_nav_ros/RobotKinematics.cpp
 )
-target_link_libraries(robot_kinematics
+target_link_libraries(RobotKinematics
   ${catkin_LIBRARIES}
-  ${PINOCCHIO_LIBRARIES}  # if using Pinocchio
+  pinocchio::pinocchio
+  # ${PINOCCHIO_LIBRARIES}  # if using Pinocchio
 )
 
 add_library(SDFfromPLY
@@ -101,14 +104,14 @@ target_link_libraries(VoxelSDF PUBLIC
 
 ### Tester for Pinocchio
 #add_executable(${PROJECT_NAME}_node src/mesh_nav_ros/mpc/mpc.cpp)
-add_executable(${PROJECT_NAME}_node
+add_executable(RobotKinematicTester
   src/mesh_nav_ros/tests/RobotKinematicTester.cpp
   # Add other cpp files here
 )
 ## Specify libraries to link a library or executable target against
-target_link_libraries(${PROJECT_NAME}_node
+target_link_libraries(RobotKinematicTester
   ${catkin_LIBRARIES}
-  robot_kinematics
+  RobotKinematics
 )
 
 ### Code to convert meshes to signed distance field
@@ -130,7 +133,7 @@ add_executable(SDFcomputing
 target_link_libraries(SDFcomputing
   ${catkin_LIBRARIES} SDFfromPLY OpenMP::OpenMP_CXX
 )
-add_compile_options(-O3 -march=native)
+# add_compile_options(-O3 -march=native)
 
 add_executable(VoxelSDFtester
   src/mesh_nav_ros/tests/VoxelSDFtester.cpp
@@ -141,15 +144,76 @@ target_link_libraries(VoxelSDFtester
 )
 
 # library target for planner core
-# add_library(elastic_band_planner_core STATIC
-#     src/mesh_nav_ros/ElasticBandPlanner.cpp
-# )
-# target_include_directories(elastic_band_planner_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+add_library(elastic_band_planner_core SHARED
+    src/mesh_nav_ros/ElasticBandPlanner.cpp
+)
 
-# # python bindings module
-# pybind11_add_module(elastic_band_planner_cpp bindings/ElasticBandBuinding.cpp)
+if (OpenMP_CXX_FOUND)
+  target_link_libraries(elastic_band_planner_core PUBLIC OpenMP::OpenMP_CXX
+    VoxelSDF
+    RobotKinematics
+    ${catkin_LIBRARIES}
+  )
+  target_compile_definitions(elastic_band_planner_core PUBLIC EBP_USE_OPENMP=1)
+else()
+  target_link_libraries(elastic_band_planner_core
+    VoxelSDF
+    RobotKinematics
+    ${catkin_LIBRARIES}
+  )
+endif()
+
+target_include_directories(elastic_band_planner_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+
+
+
+# python bindings module
+# pybind11_add_module(elastic_band_planner_cpp bindings/ElasticBandBinding.cpp)
 # target_include_directories(elastic_band_planner_cpp PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 # target_link_libraries(elastic_band_planner_cpp PRIVATE elastic_band_planner_core)
+
+# Python bindings
+# pybind11_add_module(elastic_band_planner_cpp
+#   bindings/ElasticBandBinding.cpp
+# )
+
+# target_link_libraries(elastic_band_planner_cpp PRIVATE
+#   ${catkin_LIBRARIES}
+# )
+
+pybind11_add_module(elastic_band_planner_cpp
+  bindings/ElasticBandBinding.cpp
+)
+
+target_link_libraries(elastic_band_planner_cpp PRIVATE
+  elastic_band_planner_core       # <--- link your core planner library
+  VoxelSDF
+  RobotKinematics
+  ${catkin_LIBRARIES}
+)
+
+install(TARGETS elastic_band_planner_cpp
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_PYTHON_DESTINATION}
+)
+
+add_executable(test_tls_kinematics
+  src/mesh_nav_ros/tests/test_tls_kinematics.cpp
+)
+target_link_libraries(test_tls_kinematics
+  RobotKinematics           # your RK lib target
+  ${catkin_LIBRARIES}
+)
+add_dependencies(test_tls_kinematics ${catkin_EXPORTED_TARGETS})
+
+# put this after the targets are created
+# foreach(tgt RobotKinematics VoxelSDF elastic_band_planner_core elastic_band_planner_cpp)
+#   target_compile_options(${tgt} PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer -O1)
+#   target_link_options(${tgt}    PRIVATE -fsanitize=address,undefined)
+# endforeach()
+# In your CMakeLists.txt, after targets are created:
+foreach(tgt RobotKinematics VoxelSDF elastic_band_planner_core elastic_band_planner_cpp)
+  target_compile_options(${tgt} PRIVATE -g -O0 -fno-omit-frame-pointer)
+endforeach()
 
 ## Add folders to be run by python nosetests
 # catkin_add_nosetests(test)

@@ -3,3 +3,6 @@ python-fcl=0.7.0
 octomap-python=1.8.0
 ros noetic
 numpy
+
+FOR CPP:
+pinocchio (https://github.com/stack-of-tasks/pinocchio?tab=readme-ov-file#installation) COMPILE USING RELEASE TO BE FAST!!!: using ros: catkin config --cmake-args -DCMAKE_BUILD_TYPE=Release

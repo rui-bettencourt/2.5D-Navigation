@@ -18,8 +18,10 @@ int main()
     omp_set_num_threads(omp_get_max_threads());
     // std::string mesh_file = "/home/rui/ds/testscilindros/easy/obstacles.ply";
     // std::string output_file = "/home/rui/ds/testscilindros/easy/sdf2.bin";
-    std::string mesh_file = "/home/rui/ds/testsiros2025/obstacles.ply";
-    std::string output_file = "/home/rui/ds/testsiros2025/sdf.bin";
+    // std::string mesh_file = "/home/rui/ds/testsiros2025/obstacles.ply";
+    // std::string output_file = "/home/rui/ds/testsiros2025/sdf.bin";
+    std::string mesh_file = "/home/rui/ds/testsiros2025/robot_no_arms.ply";
+    std::string output_file = "/home/rui/ds/testsiros2025/robot_sdf.bin";
 
     SDFfromPLY sdfFromPLY;
     if (!sdfFromPLY.loadMesh(mesh_file))
@@ -40,7 +42,7 @@ int main()
     Eigen::Vector3d bbox_center = 0.5 * (bbox_min + bbox_max);
 
     // Set voxel size (0.01 to 0.05 meters)
-    double voxel_size = 0.1;
+    double voxel_size = 0.02;
 
     // Compute grid dimensions
     int nx = static_cast<int>((bbox_max.x() - bbox_min.x()) / voxel_size) + 1;
