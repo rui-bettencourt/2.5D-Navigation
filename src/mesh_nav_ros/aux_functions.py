@@ -12,7 +12,7 @@ def wrap_angle(angle):
     """
     return (angle + np.pi) % (2 * np.pi) - np.pi
 
-def interpolate_path(path, start, goal):
+def interpolate_path(path, start, goal, dof=6):
     """
     Interpolates roll, pitch, and arm configuration angles (q1 to q7) for a given path.
     
@@ -25,8 +25,8 @@ def interpolate_path(path, start, goal):
     - List of dictionaries (path) with interpolated values for roll, pitch, q1 to q7.
     """
     # Extract roll, pitch, and arm configuration angles from start and goal
-    start_angles = np.array([start['roll'], start['pitch']] + [start[f'q{i}'] for i in range(1, 8)])
-    goal_angles = np.array([goal['roll'], goal['pitch']] + [goal[f'q{i}'] for i in range(1, 8)])
+    start_angles = np.array([start['roll'], start['pitch']] + [start[f'q{i}'] for i in range(1, dof+1)])
+    goal_angles = np.array([goal['roll'], goal['pitch']] + [goal[f'q{i}'] for i in range(1, dof+1)])
     
     # Total steps in the path
     n_steps = len(path)
@@ -48,7 +48,7 @@ def interpolate_path(path, start, goal):
             **step,
             'roll': interpolated_angles[0],
             'pitch': interpolated_angles[1],
-            **{f'q{j}': interpolated_angles[j + 1] for j in range(1, 8)}
+            **{f'q{j}': interpolated_angles[j + 1] for j in range(1, dof+1)}
         }
         
         interpolated_path.append(updated_step)

@@ -5,6 +5,7 @@
 #include <pinocchio/algorithm/joint-configuration.hpp>
 #include <pinocchio/algorithm/kinematics.hpp>
 #include <pinocchio/algorithm/jacobian.hpp>
+#include <pinocchio/algorithm/frames.hpp>
 
 #include <string>
 #include <Eigen/Dense>
@@ -44,10 +45,10 @@ public:
     // from Pinocchio
     Eigen::MatrixXd computeJacobiansPinocchio(const Eigen::VectorXd& q_manip, int target_joint_idx);
     //from manual calculation
-    Eigen::MatrixXd computeJacobiansManual(const Eigen::VectorXd& q, int target_joint_idx);
+    Eigen::MatrixXd computeJacobiansManual(const Eigen::VectorXd& q, int target_idx);
 
     // Update joints names
-    void updateJointsNames(const std::vector<std::string>& joint_names);
+    void updateJointsNames(const std::vector<std::string>& link_names);
 
     size_t getDOF() const;
 
@@ -89,6 +90,7 @@ private:
 
     // configuration/state that must be cloned
     std::vector<pinocchio::JointIndex> joint_ids;
+    std::vector<pinocchio::FrameIndex> frame_ids;   // frames for: mani_1..mani_6, etc
     double num_joints;
     std::string base_frame;
     std::string end_effector;

@@ -14,6 +14,31 @@ RobotKinematics::RobotKinematics(const std::string& urdf_path, const std::string
         std::cout << "model name: " << model->name << std::endl;
         // Create data required by the algorithms
         data = std::make_unique<pinocchio::Data>(*model);
+        // after building 'model' from URDF:
+
+
+    //     // --- Print all joints ---
+    // std::cout << "\n=== Joints ===" << std::endl;
+    // for (pinocchio::JointIndex jid = 0; jid < model->joints.size(); ++jid)
+    // {
+    //     const auto &j = model->joints[jid];
+    //     std::cout << jid << ": " << j.shortname() << " (" << model->names[jid] << ")"
+    //             << " [idx_q=" << model->idx_qs[jid]
+    //             << ", nq=" << j.nq()
+    //             << ", nv=" << j.nv() << "]"
+    //             << std::endl;
+    // }
+
+    // // --- Print all frames (links etc.) ---
+    // std::cout << "\n=== Frames ===" << std::endl;
+    // for (pinocchio::FrameIndex fid = 0; fid < model->frames.size(); ++fid)
+    // {
+    //     const auto &f = model->frames[fid];
+    //     std::cout << fid << ": " << f.name
+    //             << " (parent joint=" << f.parent << ", type=" << f.type << ")"
+    //             << std::endl;
+    // }
+
         updateJointsNames(joint_names);
     }else{
         Eigen::VectorXd q = Eigen::VectorXd::Zero(7);
@@ -23,12 +48,14 @@ RobotKinematics::RobotKinematics(const std::string& urdf_path, const std::string
     num_joints =joint_names.size();
 
     // Load joint limits from JSON file
-    loadJointLimits("data/joints_limits.json", joint_names);
+    // loadJointLimits("data/joints_limits_fastarmer.json", joint_names);
+    loadJointLimits("data/joints_limits_ur5.json", joint_names);
 }
 
 // --- deep copy ctor ---
 RobotKinematics::RobotKinematics(const RobotKinematics& o)
-: joint_ids(o.joint_ids)
+: frame_ids(o.frame_ids)
+, joint_ids(o.joint_ids)
 , num_joints(o.num_joints)
 , base_frame(o.base_frame)
 , end_effector(o.end_effector)
@@ -53,6 +80,7 @@ RobotKinematics& RobotKinematics::operator=(const RobotKinematics& o)
   if (this == &o) return *this;
 
   joint_ids   = o.joint_ids;
+  frame_ids   = o.frame_ids;
   num_joints  = o.num_joints;
   base_frame  = o.base_frame;
   end_effector= o.end_effector;
@@ -72,21 +100,33 @@ RobotKinematics& RobotKinematics::operator=(const RobotKinematics& o)
   return *this;
 }
 
-void RobotKinematics::updateJointsNames(const std::vector<std::string>& joint_names)
+void RobotKinematics::updateJointsNames(const std::vector<std::string>& link_names)
 {
-    std::cout << "Updating joints names" << std::endl;
+    std::cout << "Updating link frames" << std::endl;
+    frame_ids.clear();
     joint_ids.clear();
-    for (const auto& name : joint_names)
+
+    for (const auto& ln : link_names)
     {
-        pinocchio::JointIndex joint_id = model->getJointId(name);
+        pinocchio::FrameIndex fid = model->getFrameId(ln);
+        if (fid == (pinocchio::FrameIndex)(-1) || fid >= model->nframes)
+            throw std::invalid_argument("Invalid link frame: " + ln);
 
-        if (joint_id == 0 || joint_id >= model->njoints)
-            throw std::invalid_argument("Invalid joint name: " + name);
+        frame_ids.push_back(fid);
 
-        joint_ids.push_back(joint_id);
+        // parent joint that actuates this frame
+        const auto &f = model->frames[fid];
+        pinocchio::JointIndex jid = f.parent;
+        if (jid == 0 || jid >= model->njoints)
+            throw std::runtime_error("Frame '" + ln + "' has invalid parent joint");
+        joint_ids.push_back(jid);
     }
-    std::cout << "Finished update" << std::endl;
+
+    num_joints = static_cast<int>(joint_ids.size());
+    // std::cout << "Finished update (frames=" << frame_ids.size()
+    //           << ", joints=" << joint_ids.size() << ")" << std::endl;
 }
+
 
 std::vector<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d>> RobotKinematics::getJointPositions(
     const Eigen::VectorXd& q)
@@ -123,31 +163,33 @@ Eigen::MatrixXd RobotKinematics::computeJacobiansPinocchio(const Eigen::VectorXd
     if(!use_pinocchio)
         throw std::runtime_error("computeJacobiansPinocchio called in manual mode");
 
-    if (target_joint_idx < 1 || target_joint_idx > static_cast<int>(joint_ids.size()))
+    if (target_joint_idx < 1 || target_joint_idx > static_cast<int>(frame_ids.size()))
         throw std::invalid_argument("Invalid target_joint_idx");
 
-    // 1) Map 7-DoF manip vector -> full model configuration
+    // 1) Map manip vector -> full model configuration
     Eigen::VectorXd q_full = packToModelConfig(q_manip);
 
-    // 2) Update kinematics
+    // 2) Update joint kinematics
     pinocchio::forwardKinematics(*model, *data, q_full);
 
-    // 3) Compute all joint Jacobians (fills data->JS)
+    // 3) Compute all joint Jacobians (fills data->J)
     pinocchio::computeJointJacobians(*model, *data, q_full);
 
-    // 4) Update placements (your version uses updateGlobalPlacements)
-    pinocchio::updateGlobalPlacements(*model, *data);
+    // 4) Update placements
+    pinocchio::updateGlobalPlacements(*model, *data);      // oMi valid
+    pinocchio::framesForwardKinematics(*model, *data, q_full); // oMf valid
 
-    // 5) Extract 6×nv Jacobian for the *target joint* in WORLD frame
+    // 5) Frame Jacobian in WORLD
+    const pinocchio::FrameIndex fid = frame_ids[target_joint_idx - 1];
     Eigen::MatrixXd J_full(6, model->nv);
     J_full.setZero();
-    const pinocchio::JointIndex jid_target = joint_ids[target_joint_idx - 1];
-    pinocchio::getJointJacobian(*model, *data, jid_target, pinocchio::ReferenceFrame::WORLD, J_full);
 
-    // 6) Reduce to 6 × target_joint_idx (your manipulator joints only)
-    Eigen::MatrixXd J_red = sliceToManipulator(J_full, target_joint_idx);
+    // Older-compatible API
+    pinocchio::getFrameJacobian(*model, *data, fid,
+                                pinocchio::ReferenceFrame::WORLD, J_full);
 
-    return J_red;
+    // 6) Reduce to manipulator columns (assumes nv(j)=1)
+    return sliceToManipulator(J_full, target_joint_idx);
 }
 
 
@@ -160,73 +202,69 @@ size_t RobotKinematics::getDOF() const
     }
 }
 
-std::vector<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d>> RobotKinematics::forwardKinematicsPinocchio(
-    const Eigen::VectorXd& q)
+std::vector<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d>>
+RobotKinematics::forwardKinematicsPinocchio(const Eigen::VectorXd& q)
 {
     Eigen::VectorXd q_full = packToModelConfig(q);
-    // std::cout << "Starting forward kinematics" << std::endl;
-    // Compute forward kinematics once
+
+    // Joint FK
     pinocchio::forwardKinematics(*model, *data, q_full);
+    pinocchio::updateGlobalPlacements(*model, *data);
 
-    // std::cout << "Initializing positions vector" << std::endl;
+    // Frame placements (for oMf)
+    pinocchio::framesForwardKinematics(*model, *data, q_full);
+
     std::vector<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d>> positions;
-    positions.reserve(joint_ids.size());  // avoid reallocations
+    positions.reserve(frame_ids.size());
 
-    // std::cout << "Pushing results" << std::endl;
-    for (auto joint_id : joint_ids)
-        positions.push_back(data->oMi[joint_id].translation());
+    for (const auto fid : frame_ids)
+        positions.push_back(data->oMf[fid].translation());
 
     return positions;
 }
+
 
 // Build a full-size configuration from a 7-DoF manip vector.
 // Assumes each manip joint has nq()==1 (revolute/prismatic). Adjust if needed.
 Eigen::VectorXd RobotKinematics::packToModelConfig(const Eigen::VectorXd& q_manip) const
 {
-    if(!use_pinocchio) return q_manip; // manual branch uses 7-dim already
+    if(!use_pinocchio) return q_manip;
 
     if(static_cast<int>(q_manip.size()) != static_cast<int>(joint_ids.size()))
         throw std::invalid_argument("q_manip size != number of manip joints");
 
-    // Start from neutral (or cached default) so all non-manip joints are well-defined
     Eigen::VectorXd q_full = pinocchio::neutral(*model);
 
     for (int k = 0; k < static_cast<int>(joint_ids.size()); ++k) {
         const pinocchio::JointIndex jid = joint_ids[k];
         const auto &jmodel = model->joints[jid];
-        const int iq = model->idx_qs[jid];
-        const int nqj = jmodel.nq();            // expected 1
-        if (nqj != 1) {
+        const int iq  = model->idx_qs[jid];
+        const int nqj = jmodel.nq();
+        if (nqj != 1)
             throw std::runtime_error("packToModelConfig: joint " + model->names[jid] +
-                                     " has nq=" + std::to_string(nqj) +
-                                     " (only nq==1 supported in this mapper)");
-        }
+                                     " has nq=" + std::to_string(nqj));
         q_full[iq] = q_manip[k];
     }
     return q_full;
 }
 
-// Slice a 6×nv Jacobian (WORLD frame) down to 6×cols, taking only the columns
-// for manipulator joints 0..cols-1 (by joint_ids order). Assumes nv(j)=1.
+
 Eigen::MatrixXd RobotKinematics::sliceToManipulator(const Eigen::MatrixXd &J_full,
                                                     int cols) const
 {
     Eigen::MatrixXd J_red(6, cols);
     for (int k = 0; k < cols; ++k) {
         const pinocchio::JointIndex jid = joint_ids[k];
-        const auto &jmodel = model->joints[jid];
-        const int iv = model->idx_vs[jid];
-        const int nvj = jmodel.nv();            // expected 1
-        if (nvj != 1) {
+        const int iv  = model->idx_vs[jid];
+        const int nvj = model->joints[jid].nv(); // expect 1
+        if (nvj != 1)
             throw std::runtime_error("sliceToManipulator: joint " + model->names[jid] +
-                                     " has nv=" + std::to_string(nvj) +
-                                     " (only nv==1 supported here)");
-        }
-        // Take the single column for that joint’s velocity DoF
+                                     " has nv=" + std::to_string(nvj));
         J_red.col(k) = J_full.col(iv);
     }
     return J_red;
 }
+
 
 std::vector<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d>> RobotKinematics::forwardKinematicsManual(const Eigen::VectorXd& q) {
     std::vector<Eigen::Isometry3d> transforms;
@@ -410,7 +448,7 @@ std::map<std::string, std::pair<double,double>> RobotKinematics::getJointsLimits
     std::map<std::string, std::pair<double,double>> limits;
 
     if (use_pinocchio) {
-        for (const auto& jid : joint_ids) {
+        for (const auto& jid : frame_ids) {
             const auto& jmodel = model->joints[jid];
             std::string name = model->names[jid];
             Eigen::VectorXd lower = model->lowerPositionLimit.segment(model->idx_qs[jid], jmodel.nq());
@@ -465,10 +503,10 @@ void RobotKinematics::loadJointLimits(const std::string& filepath,
     }
 
     if(debug){
-        std::cout << "Loaded joint limits:" << std::endl;
-        for(auto& [name, lim] : joint_limits){
-            std::cout << " " << name << ": [" << lim.first << ", " << lim.second << "]" << std::endl;
-        }
+        // std::cout << "Loaded joint limits:" << std::endl;
+        // for(auto& [name, lim] : joint_limits){
+        //     std::cout << " " << name << ": [" << lim.first << ", " << lim.second << "]" << std::endl;
+        // }
     }
 }
 

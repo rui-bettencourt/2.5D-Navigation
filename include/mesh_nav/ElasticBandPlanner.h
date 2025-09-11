@@ -61,11 +61,11 @@ private:
     std::unique_ptr<RobotKinematics> robot_;
     std::vector<std::string> joint_names_;
     int dof_ = 0;
-    bool debug_ = true;
+    bool debug_ = false;
     double min_distance_to_obstacle = 0.05;
     double clip_length_attractive_forces_ = 200.0;
     std::vector<double> safe_config_;        // size = dof_, NaN/empty => ignore
-    bool   dynamic_safety_ = false;
+    bool   dynamic_safety_ = true;
     double center_activation_safety_ = 0.8;  // same meaning as python
     int    cur_wp_idx_ = 0;                  // current waypoint index
     int    path_len_   = 1;                  // total waypoints

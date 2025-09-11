@@ -72,13 +72,15 @@ bool ElasticBandPlanner::initialize(const std::string& sdf_bin_path, const std::
     // A very light body approximation (base frame)
     robot_points_base_.clear();
     robot_points_base_.push_back(Vec3(0.0, 0.0, 0.0));
-    robot_points_base_.push_back(Vec3(0.0, 0.0, 0.5));
-    robot_points_base_.push_back(Vec3(0.0, 0.0, 0.8));
+    robot_points_base_.push_back(Vec3(0.0, 0.0, 0.17));
 
     std::vector<std::string> joint_names = {
-    "arm_1_joint","arm_2_joint","arm_3_joint","arm_4_joint","arm_5_joint","arm_6_joint","arm_7_joint"
+        "mani_1", "mani_2", "mani_3",
+        "mani_4", "mani_5", "mani_6"
     };
-    attachRobot("/home/rui/socrob_ws/src/isr_tiago/simulation/mbot_simulation_environments/robots/tiago_ouster.urdf", "base_link", "arm_7_link", joint_names);
+    // attachRobot("/home/rui/socrob_ws/src/isr_tiago/simulation/mbot_simulation_environments/robots/tiago_ouster.urdf", "base_link", "arm_7_link", joint_names);
+    attachRobot("/home/rui/mesh_nav_ws/src/REMANI-Planner/remani_planner/mm_config/meshes/ur5/ur5.urdf",
+        "mm_base", "mani_6", joint_names);
 
 
     std::cout << "ElasticBandPlanner initialized with SDF, Kinematics and robot body points.\n";
@@ -263,22 +265,25 @@ Eigen::VectorXd ElasticBandPlanner::thread_joint(int joint_index,
     // Tau from attractive force
     Eigen::VectorXd tau_attr = rk.calculateJointTorques(f_attr_world, joint_index, q_cur, &J);
 
-    // Repulsive force (world) using the joint position as the probe
-    Eigen::Vector3d f_rep_world = compute_repulsive_force(std::vector<Vec3>{joint_pos}, voxel_grid_.get());
-    Eigen::Vector3d f_rep_robot = compute_repulsive_force(std::vector<Vec3>{joint_pos}, voxel_grid_robot_.get());
+    if(joint_index==2 || joint_index==3){
+        // Repulsive force (world) using the joint position as the probe
+        Eigen::Vector3d f_rep_world = compute_repulsive_force(std::vector<Vec3>{joint_pos}, voxel_grid_.get());
+        Eigen::Vector3d f_rep_robot = compute_repulsive_force(std::vector<Vec3>{joint_pos}, voxel_grid_robot_.get());
+    
+        // Tau from repulsive force
+        Eigen::VectorXd tau_rep = rk.calculateJointTorques(f_rep_world, joint_index, q_cur, &J);
+    
+        if(k_repulsion_robot_joints>0.0){
+            Eigen::VectorXd tau_rep_robot = rk.calculateJointTorques(f_rep_robot, joint_index, q_cur, &J);
+    
+            torques += (k_repulsion_robot_joints * tau_rep_robot);
+        }
 
-    // Tau from repulsive force
-    Eigen::VectorXd tau_rep = rk.calculateJointTorques(f_rep_world, joint_index, q_cur, &J);
-
-    if(k_repulsion_robot_joints>0.0){
-        Eigen::VectorXd tau_rep_robot = rk.calculateJointTorques(f_rep_robot, joint_index, q_cur, &J);
-
-        torques += (k_repulsion_robot_joints * tau_rep_robot);
+        torques += (k_repulsion_joints  * tau_rep);
     }
 
     // Combine (attractive + repulsive)
     torques += (k_attraction_joints * tau_attr);
-    torques += (k_repulsion_joints  * tau_rep);
 
     // --- Safety (attract joint toward safe configuration) ---
     if (!safe_config_.empty()) {
@@ -294,13 +299,27 @@ Eigen::VectorXd ElasticBandPlanner::thread_joint(int joint_index,
                     const double center = center_activation_safety_ * L;
                     // Same shape you used in Python:
                     // k = k_attraction_joints * (1 - tanh(i - center))/2
-                    k_safety = k_attraction_joints *
-                               (1.0 - std::tanh(static_cast<double>(wp_idx) - center)) * 0.5;
+                    // scale in [0, 1]; same shape as before
+                    const double scale  = 0.5 * (1.0 - std::tanh(static_cast<double>(wp_idx) - center));
+                    k_safety *= scale;
+                    // k_safety = k_attraction_joints *
+                    //            (1.0 - std::tanh(static_cast<double>(wp_idx) - center)) * 0.5;
                 }
 
                 torques(j) += k_safety * delta;
+                // std::cout << "[ElasticBandPlanner] joint " << joint_index
+                //           << " wp_idx " << wp_idx
+                //           << " delta: " << delta
+                //           << " k_safety: " << k_safety
+                //           << " torque: " << k_safety * delta
+                //           << std::endl;
             }
         }
+    }
+
+    if (debug_) {
+        std::cout << "[ElasticBandPlanner] Torques computed for joint " << joint_index
+                  << " at waypoint " << wp_idx << std::endl;
     }
 
     return torques;
@@ -357,10 +376,10 @@ Row ElasticBandPlanner::thread_waypoint(int i, RobotKinematics& rk)
         // --- Keep inner loop SERIAL ---
         Eigen::VectorXd total_torques = Eigen::VectorXd::Zero(dof_);
         for (int j = 0; j < dof_; ++j) {
-            if(j==3 || j==6){   //only compute for joint 4 and 7
+            // if(j==2 || j==3){   //only compute for joint 4 and 7
                 auto tau = thread_joint(j+1, prev_positions[j], cur_positions[j], next_positions[j], q_cur, rk, i, static_cast<int>(path_matrix.rows()));
                 total_torques += tau;
-            }
+            // }
         }
 
         // Update joints and clamp
@@ -406,6 +425,10 @@ Row ElasticBandPlanner::thread_waypoint(int i, RobotKinematics& rk)
     new_wp(3) = new_r;
     new_wp(4) = new_p;
     new_wp(5) = new_y;
+
+    if (debug_) {
+        std::cout << "[ElasticBandPlanner] Waypoint " << i << " done." << std::endl;
+    }
 
     return new_wp;
 }
@@ -474,7 +497,13 @@ PathMatrix ElasticBandPlanner::update_path(const PathMatrix& path,
         }
 
         history.push_back(path_matrix);
-        if (max_change < convergence_threshold) break;
+        if (debug_) {
+            std::cout << "[ElasticBandPlanner] Iteration: " << it + 1 << std::endl;
+        }
+        if (max_change < convergence_threshold){
+            std::cout << "Converged in " << it+1 << " iterations!" << std::endl;
+            break;
+        }
     }
     return path_matrix;
 }

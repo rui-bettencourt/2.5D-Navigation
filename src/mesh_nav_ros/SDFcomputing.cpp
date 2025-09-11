@@ -20,8 +20,9 @@ int main()
     // std::string output_file = "/home/rui/ds/testscilindros/easy/sdf2.bin";
     // std::string mesh_file = "/home/rui/ds/testsiros2025/obstacles.ply";
     // std::string output_file = "/home/rui/ds/testsiros2025/sdf.bin";
-    std::string mesh_file = "/home/rui/ds/testsiros2025/robot_no_arms.ply";
-    std::string output_file = "/home/rui/ds/testsiros2025/robot_sdf.bin";
+    // std::string mesh_file = "/home/rui/ds/testsiros2025/robot_no_arms.ply";
+    std::string mesh_file = "/home/rui/ds/testsiros2025/robotfastarmer_no_arms.ply";
+    std::string output_file = "/home/rui/ds/testsiros2025/robot_mm_sdf.bin";
 
     SDFfromPLY sdfFromPLY;
     if (!sdfFromPLY.loadMesh(mesh_file))

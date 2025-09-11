@@ -10,16 +10,16 @@
 //     std::cout << "RobotKinematics test..." << std::endl;
 
 //     // List of joint names to get positions for
-//     std::vector<std::string> joint_names = {
+//     std::vector<std::string> frames_names = {
 //         "arm_1_joint", "arm_2_joint", "arm_3_joint", "arm_4_joint", "arm_5_joint", "arm_6_joint", "arm_7_joint"
 //     };
 
-//     RobotKinematics rk("/home/rui/socrob_ws/src/isr_tiago/simulation/mbot_simulation_environments/robots/tiago_ouster.urdf", "base_link", "arm_7_link", joint_names);
+//     RobotKinematics rk("/home/rui/socrob_ws/src/isr_tiago/simulation/mbot_simulation_environments/robots/tiago_ouster.urdf", "base_link", "arm_7_link", frames_names);
 
 //     Eigen::VectorXd q = Eigen::VectorXd::Zero(rk.getDOF());
 
 
-//     // rk.updateJointsNames(joint_names);
+//     // rk.updateJointsNames(frames_names);
 
 //     // Measure FK time
 //     auto t1 = std::chrono::high_resolution_clock::now();
@@ -44,7 +44,7 @@
 //         std::cout << "Iteration " << i + 1 << " - Forward kinematics time: " << fk_duration.count() * 1000 << " ms" << std::endl;
 //     }
 
-//     // joint_names = {
+//     // frames_names = {
 //     //     "arm_7_joint"
 //     // };
 
@@ -68,7 +68,7 @@
 //     std::cout << "Number of jacobians: " << Js.size() <<std::endl;
 
 //     for (size_t i = 0; i < Js.size(); ++i) {
-//         std::cout << "Jacobian for " << joint_names[i] << ":\n" << Js[i] << std::endl << std::endl;
+//         std::cout << "Jacobian for " << frames_names[i] << ":\n" << Js[i] << std::endl << std::endl;
 //     }
 
 //     std::cout << "Jacobian computation time: " << jac_duration.count() * 1000 << " ms" << std::endl;
@@ -95,17 +95,21 @@ double measureTime(Func f, int iterations = 10) {
 int main() {
     std::cout << "==== RobotKinematics Full Test ====" << std::endl;
 
-    std::vector<std::string> joint_names = {
-        "arm_1_joint", "arm_2_joint", "arm_3_joint",
-        "arm_4_joint", "arm_5_joint", "arm_6_joint", "arm_7_joint"
-    };
+    std::vector<std::string> frames_names = {"mani_1","mani_2","mani_3","mani_4","mani_5","mani_6"};
 
+    // RobotKinematics rk(
+    //     "/home/rui/socrob_ws/src/isr_tiago/simulation/mbot_simulation_environments/robots/tiago_ouster.urdf",
+    //     "base_link", "arm_7_link", frames_names
+    // );
     RobotKinematics rk(
-        "/home/rui/socrob_ws/src/isr_tiago/simulation/mbot_simulation_environments/robots/tiago_ouster.urdf",
-        "base_link", "arm_7_link", joint_names
+        // "/home/rui/test_ws/src/REMANI-Planner/remani_planner/mm_config/meshes/FastArmer/mm_robot.urdf",
+        "/home/rui/mesh_nav_ws/src/REMANI-Planner/remani_planner/mm_config/meshes/ur5/ur5.urdf",
+        "mm_base", "mani_5", frames_names
     );
 
     Eigen::VectorXd q = Eigen::VectorXd::Zero(rk.getDOF());
+    // Eigen::VectorXd q = Eigen::VectorXd::Constant(rk.getDOF(), 1.57);
+    // q[2]=1.57;
 
     // --- Test Forward Kinematics ---
     std::vector<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d>> joint_positions;
@@ -114,17 +118,17 @@ int main() {
     }, 10);
 
     std::cout << "\nForward Kinematics result:" << std::endl;
-    for (size_t i = 0; i < joint_positions.size() && i < joint_names.size(); ++i)
-        std::cout << joint_names[i] << ": " << joint_positions[i].transpose() << std::endl;
+    for (size_t i = 0; i < joint_positions.size() && i < frames_names.size(); ++i)
+        std::cout << frames_names[i] << ": " << joint_positions[i].transpose() << std::endl;
     std::cout << "Average FK runtime: " << fk_time << " ms" << std::endl;
 
     // --- Test single Jacobian ---
     Eigen::MatrixXd J;
     double jac_time = measureTime([&]() {
-        J = rk.computeJacobian(q, 7);
+        J = rk.computeJacobian(q, 6);
     }, 10);
 
-    std::cout << "\nJacobian for joint 7:\n" << J << std::endl;
+    std::cout << "\nJacobian for joint 6:\n" << J << std::endl;
     std::cout << "Average single-Jacobian runtime: " << jac_time << " ms" << std::endl;
 
     // --- Test all Jacobians ---
@@ -155,13 +159,13 @@ int main() {
     std::cout << "Clamped q_test: " << q_clamped.transpose() << std::endl;
 
     // --- Test getJointLimit ---
-    auto lim_q3 = rk.getJointLimit("arm_3_joint");
+    auto lim_q3 = rk.getJointLimit("joint3");
     std::cout << "\narm_3_joint limits: [" << lim_q3.first << ", " << lim_q3.second << "]" << std::endl;
 
     // --- Stress test all functions ---
     int iterations = 1000;
     double fk_stress = measureTime([&]() { rk.getJointPositions(q); }, iterations);
-    double jac_stress = measureTime([&]() { rk.computeJacobian(q, 7); }, iterations);
+    double jac_stress = measureTime([&]() { rk.computeJacobian(q, 6); }, iterations);
     double jacs_stress = measureTime([&]() { rk.computeJacobians(q); }, iterations);
     double limit_check_stress = measureTime([&]() { rk.isWithinLimits(q); }, iterations);
 
@@ -185,8 +189,8 @@ int main() {
 
     // Check FK after moving the base
     joint_positions = rk.getJointPositions(q);
-    for (size_t i = 0; i < joint_positions.size() && i < joint_names.size(); ++i)
-        std::cout << joint_names[i] << ": " << joint_positions[i].transpose() << std::endl;
+    for (size_t i = 0; i < joint_positions.size() && i < frames_names.size(); ++i)
+        std::cout << frames_names[i] << ": " << joint_positions[i].transpose() << std::endl;
 
     // Test worldToLocal again after moving the robot
     local_point = rk.worldToLocal(world_point);
@@ -199,11 +203,11 @@ int main() {
     wrench << 10.0, 0.0, 0.0, 0.0, 0.0, 1.0;
 
     Eigen::Vector3d force = wrench.head<3>();  // extract linear part
-    int joint_idx = 7;                          // whichever joint you want
+    int joint_idx = 6;                          // whichever joint you want
     Eigen::VectorXd torques = rk.calculateJointTorques(force, joint_idx, q);
     std::cout << "Joint torques for sample wrench: " << torques.transpose() << std::endl;
 
-    std::cout << "\n==== Test Complete ====" << std::endl;
+    std::cout << "\n==== Test Completed ====" << std::endl;
     return 0;
 }
 

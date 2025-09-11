@@ -19,43 +19,28 @@ import json
 
 ###### variables
 k_attraction_base=0.005
-k_repulsion_base=0.00002
+k_repulsion_base=0.0002
 k_attraction_joints=0.2
-k_repulsion_joints=0.09
+k_repulsion_joints=0.2#09
 k_repulsion_robot_joints=0.0
-k_safety_joints = 0.1 #0.0
+k_safety_joints = 0.3 #0.0
 closest_obstacle_only = True
 k_update_joints=0.2
 k_orientation=0.02
 k_orientation_from_base=0.0
 obstacle_threshold=1.5
-manipulator = False
+manipulator = True
 #min_distance_to_obstacle = 0.05
-# start = {'x': -11.0, 'y': -8.0, 'z': 0.0,
-#          'roll': 0.0, 'pitch': 0.0, 'yaw': 0.0,
-#          'q1': 0.0, 'q2': -0.05, 'q3': 0.0, 'q4': 0.02, 'q5': 0.0, 'q6': 0.0, 'q7': 0.0}
-# start = {'x': -1.23, 'y': 5.20, 'z': 0.0,
-#          'roll': 0.0, 'pitch': 0.0, 'yaw': -0.93,
-#          'q1': 0.0, 'q2': -0.05, 'q3': 0.0, 'q4': 0.02, 'q5': 0.0, 'q6': 0.0, 'q7': 0.0}
+
 start = {'x': 0.0, 'y': 0.0, 'z': 0.0,
          'roll': 0.0, 'pitch': 0.0, 'yaw': 0.0,
-         'q1': 0.0, 'q2': -0.05, 'q3': 0.0, 'q4': 0.02, 'q5': 0.0, 'q6': 0.0, 'q7': 0.0}
-# goal = {'x': 2.8, 'y': -3.8, 'z': 0.0,
-#         'roll': 0.0, 'pitch': 0.0, 'yaw': -1.51,
-#         # 'q1': 1.5, 'q2': -0.09, 'q3': -3.27, 'q4': 1.58, 'q5': -1.78, 'q6': -1.39, 'q7': 0.0}
-#         # 'q1': 0.2, 'q2': -1.34, 'q3': -0.2, 'q4': 1.94, 'q5': -1.57, 'q6': 1.37, 'q7': 0.0}
-#         'q1': 0.33, 'q2': 0.92, 'q3': -1.63, 'q4': 0.51, 'q5': -1.41, 'q6': 0.78, 'q7': 0.0}
-#         # 'q1': 0.046, 'q2': 1.02, 'q3': -2.77, 'q4': 0.77, 'q5': 0.0, 'q6': 0.0, 'q7': 0.0}
-### for IROS:
-# goal = {'x': 6.534, 'y': 0.8, 'z': 0.0,
-#         'roll': 0.0, 'pitch': 0.0, 'yaw': -2.3,
-#         'q1': 0.33, 'q2': 0.92, 'q3': -1.63, 'q4': 0.51, 'q5': -1.41, 'q6': 0.78, 'q7': 0.0}
+         'q1': 1.57, 'q2': -0.0, 'q3': 0.0, 'q4': 0.0, 'q5': 0.0, 'q6': 0.0}
 
 goal = {'x': 4.0, 'y': 0.0, 'z': 0.0,
         'roll': 0.0, 'pitch': 0.0, 'yaw': 0.0,
-        'q1': 0.0, 'q2': -0.05, 'q3': 0.0, 'q4': 0.02, 'q5': 0.0, 'q6': 0.0, 'q7': 0.0}
+        'q1': 0.0, 'q2': -0.0, 'q3': 0.0, 'q4': 0.0, 'q5': 0.0, 'q6': 0.0, 'q7': 0.0}
 # safe_config = {'q1': 0.2, 'q2': -1.34, 'q3': -0.2, 'q4': 1.94, 'q5': -1.57, 'q6': 1.37, 'q7': 0.0}
-safe_config = {'q1': 0.72, 'q2': -0.9, 'q3': -0.88, 'q4': 1.94, 'q5': -1.2, 'q6': 1.37, 'q7': 0.0}
+safe_config = {'q1': 0.72, 'q2': -0.9, 'q3': -0.88, 'q4': 1.94, 'q5': -1.2, 'q6': 1.37}
 center_activation_safety = 0.8
 ################
 
@@ -80,7 +65,7 @@ class MeshNav(object):
                                         k_orientation=k_orientation, k_orientation_from_base=k_orientation_from_base,
                                         k_safety_joints=k_safety_joints, safe_config=safe_config,
                                         obstacle_threshold=obstacle_threshold)
-        self.joint_names = ['base_link','arm_1_joint','arm_2_joint','arm_3_joint','arm_4_joint','arm_5_joint','arm_6_joint','arm_7_joint']
+        # self.joint_names = ['base_link','joint1','joint2','joint3','joint4','joint5','joint6']
 
     def run(self):
         obstacle_mesh = o3d.io.read_triangle_mesh(self.path + 'obstacles.ply')

@@ -96,10 +96,10 @@ PYBIND11_MODULE(elastic_band_planner_cpp, m) {
 
         .def("update_path", [](ElasticBandPlanner &self, py::list path,
                                int iterations, double convergence_threshold){
-            PathMatrix pm = path_from_py(path,7);
+            PathMatrix pm = path_from_py(path,6);
             // Call the original C++ method using the Python obs_mesh object
             auto result = self.update_path(pm, iterations, convergence_threshold);
-            return path_to_py(result,7);
+            return path_to_py(result,6);
         }, py::arg("path"),
            py::arg("iterations")=100, py::arg("convergence_threshold")=1e-3)
 
@@ -109,7 +109,7 @@ PYBIND11_MODULE(elastic_band_planner_cpp, m) {
                  self.setSafeConfig(safe_from_py(safe_cfg, num_joints));
              },
              py::arg("safe_config"),
-             py::arg("num_joints") = 7,
+             py::arg("num_joints") = 6,
              "Set a safety configuration. Accepts dict {q1..qN} or a sequence.")
 
         // --- New: enable/disable dynamic safety weighting (+ center position) ---
