@@ -11,16 +11,28 @@ import matplotlib.pyplot as plt
 from matplotlib import colormaps as cm
 
 # import other created files
-from robot_mesh_state import RobotMeshState
-from collision_detections import *
-from graph_functions import GraphManager
-from elastic_bands_threads import ElasticBandPlanner as ElasticBandPlannerPy
-from robot_kinematics import RobotKinematics
-from aux_functions import interpolate_path, sample_path
+from mesh_nav_ros.robot_mesh_state import RobotMeshState
+from mesh_nav_ros.collision_detections import *
+from mesh_nav_ros.graph_functions import GraphManager
+from mesh_nav_ros.elastic_bands_threads import ElasticBandPlanner as ElasticBandPlannerPy
+from mesh_nav_ros.robot_kinematics import RobotKinematics
+from mesh_nav_ros.aux_functions import interpolate_path, sample_path
 
 # NEW: C++ elastic band planner binding (pybind11)
-import sys, os
-sys.path.append(os.path.join(os.environ["HOME"], "pcl_ws/devel/lib"))  # adjust to where .so is
+import os, sys
+
+ws = os.path.abspath(os.path.dirname(__file__))
+print(ws)
+for _ in range(10):  # walk up a few levels
+    cand = os.path.join(ws, 'devel', 'lib')
+    if os.path.isdir(cand):
+        if cand not in sys.path:
+            sys.path.append(cand)
+        break
+    parent = os.path.dirname(ws)
+    if parent == ws:
+        break
+    ws = parent
 try:
     from elastic_band_planner_cpp import ElasticBandPlanner as ElasticBandPlannerCPP
     _HAS_CPP_EBAND = True
@@ -42,8 +54,8 @@ k_orientation_from_base = 0.0
 obstacle_threshold = 1.5
 manipulator = True
 
-NUMBER_OF_ATTEMPTS = 100
-NUMBER_WAYPOINTS_IN_PATH = 100
+NUMBER_OF_ATTEMPTS = 1
+NUMBER_WAYPOINTS_IN_PATH = 15
 
 # Number of arm joints expected by the binding (q1..q7)
 NUM_JOINTS = 7
@@ -171,7 +183,7 @@ class MeshNav(object):
             end_time = time.time()
             print("Execution time:", end_time - start_time)
 
-            # self.plot_path_3d(new_path, obstacle_mesh)
+            self.plot_path_3d(new_path, obstacle_mesh)
 
             # with open("/home/rui/pcl_ws/src/mesh_nav/data/testcpp.json", "w") as file:
             #     json.dump(new_path, file, indent=4)
