@@ -12,7 +12,7 @@ def wrap_angle(angle):
     """
     return (angle + np.pi) % (2 * np.pi) - np.pi
 
-def interpolate_path(path, start, goal):
+def interpolate_path(path, start, goal, dof):
     """
     Interpolates roll, pitch, and arm configuration angles (q1 to q7) for a given path.
     
@@ -48,7 +48,7 @@ def interpolate_path(path, start, goal):
             **step,
             'roll': interpolated_angles[0],
             'pitch': interpolated_angles[1],
-            **{f'q{j}': interpolated_angles[j + 1] for j in range(1, 8)}
+            **{f'q{j}': interpolated_angles[j + 1] for j in range(1, dof)}
         }
         
         interpolated_path.append(updated_step)
@@ -86,3 +86,57 @@ def create_bounding_box_corners(center, obstacle_threshold):
     max_corner = np.array(center) + half_size
     
     return min_corner, max_corner
+
+def calculate_path_distance(path):
+    """
+    Calculates the total Euclidean distance covered by a path.
+
+    Args:
+        path (List[Dict]): List of dictionaries with keys 'x', 'y', 'z', and 'yaw'.
+
+    Returns:
+        float: Total distance covered by the path.
+    """
+    if len(path) < 2:
+        return 0.0
+
+    distance = 0.0
+    for i in range(1, len(path)):
+        p1 = path[i - 1]
+        p2 = path[i]
+        segment = np.sqrt(
+            (p2['x'] - p1['x']) ** 2 +
+            (p2['y'] - p1['y']) ** 2 +
+            (p2['z'] - p1['z']) ** 2
+        )
+        distance += segment
+    return distance
+
+def apply_safety_configuration_to_path(path, safety_config, dof):
+    """
+    Replaces the values of 'q1' to 'q{qdof}' in all path steps except the first and last
+    with the values from safety_config.
+
+    Args:
+        path (List[Dict]): List of dictionaries with keys including 'q1' to 'q{qdof}'.
+        safety_config (Dict): Dictionary with keys 'q1' to 'q{qdof}' specifying safe joint values.
+        qdof (int): Number of joints (degrees of freedom).
+
+    Returns:
+        List[Dict]: Modified path with safety configuration applied.
+    """
+    if len(path) < 3:
+        return path.copy()
+
+    new_path = []
+    for i, step in enumerate(path):
+        if i == 0 or i == len(path) - 1:
+            new_path.append(step.copy())
+        else:
+            updated_step = step.copy()
+            for j in range(1, dof):
+                key = f'q{j}'
+                if key in safety_config:
+                    updated_step[key] = safety_config[key]
+            new_path.append(updated_step)
+    return new_path
