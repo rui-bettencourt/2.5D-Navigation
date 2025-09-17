@@ -3,6 +3,8 @@
 import rospy
 import random
 import numpy as np
+import csv
+import math
 
 # import other created files
 from robot_mesh_state import RobotMeshState
@@ -68,8 +70,10 @@ class MeshNav(object):
         # self.joint_names = ['base_link','joint1','joint2','joint3','joint4','joint5','joint6']
 
     def run(self):
-        obstacle_mesh = o3d.io.read_triangle_mesh(self.path + 'obstacles.ply')
-        obstacle_mesh.paint_uniform_color([1.0, 0.72, 0.67]) # pink
+        # obstacle_mesh = o3d.io.read_triangle_mesh(self.path + 'obstacles.ply')
+        # obstacle_mesh = o3d.io.read_triangle_mesh(self.path + 'retail_visuals.ply')
+        # obstacle_mesh.paint_uniform_color([1.0, 0.72, 0.67]) # pink
+        obstacle_mesh = self.import_obstacles()
         execution_times = []
         number_of_attempts = 1
         print("Read obstacles!")
@@ -170,14 +174,108 @@ class MeshNav(object):
 
         o3d.visualization.draw_geometries(all_bbs)
 
+    # def import_obstacles(self):
+    #     # obstacle_mesh = o3d.io.read_triangle_mesh(self.path + 'obstacles.ply')
+    #     obstacle_mesh = o3d.io.read_triangle_mesh(self.path + 'retail_visuals.ply')
+    #     obstacle_mesh.paint_uniform_color([1.0, 0.72, 0.67]) # pink
+    #     return obstacle_mesh
     def import_obstacles(self):
-        obstacle_mesh = o3d.io.read_triangle_mesh(self.path + 'obstacles.ply')
-        obstacle_mesh.paint_uniform_color([1.0, 0.72, 0.67]) # pink
-        return obstacle_mesh
+        # mesh = o3d.io.read_triangle_mesh(self.path + 'obstacles.ply')
+        mesh = o3d.io.read_triangle_mesh(self.path + 'retail_visuals.ply')
+        if mesh.is_empty():
+            return mesh
+
+        V = np.asarray(mesh.vertices)
+        z = V[:, 2]
+        zmin, zmax = float(z.min()), float(z.max())
+
+        # Normalize z -> [0,1]
+        if zmax == zmin:
+            s = np.ones_like(z)
+        else:
+            s = (z - zmin) / (zmax - zmin)
+
+        # Shades of pink: scale brightness between 0.3 and 1.0
+        base = np.array([1.0, 0.72, 0.67], dtype=float)  # pink
+        brightness = 0.3 + 0.7 * s                       # 0.3 (dark) .. 1.0 (full)
+        colors = np.clip(brightness[:, None] * base[None, :], 0.0, 1.0)
+
+        mesh.vertex_colors = o3d.utility.Vector3dVector(colors)
+        return mesh
 
     def import_path(self, path_dir):
         with open(path_dir, "r") as file:
             path = json.load(file)
+        return path
+
+    
+
+    def import_traj_csv(self, csv_path,
+                        num_joints=6,
+                        angles_in_degrees=False,
+                        default_z=0.0,
+                        default_roll=0.0,
+                        default_pitch=0.0):
+        """
+        Read a trajectory CSV and return a list[dict] with keys:
+        x, y, z, roll, pitch, yaw, q1..qN
+        Expected headers: at least x,y,yaw and (optionally) t, q1..qN.
+        Missing z/roll/pitch are filled with provided defaults.
+        Missing q's are filled with 0.0.
+        """
+        def _to_float(s):
+            try:
+                return float(s)
+            except Exception:
+                return 0.0
+
+        path = []
+        with open(csv_path, "r") as f:
+            reader = csv.DictReader(f)
+            hdr = [h.strip() for h in reader.fieldnames] if reader.fieldnames else []
+            have_x   = any(h.lower() == "x"   for h in hdr)
+            have_y   = any(h.lower() == "y"   for h in hdr)
+            have_yaw = any(h.lower() == "yaw" for h in hdr)
+            if not (have_x and have_y and have_yaw):
+                raise ValueError(f"CSV must contain columns x,y,yaw. Found: {hdr}")
+
+            # normalize key lookup to be case-insensitive
+            def g(row, key, default="0"):
+                # exact first, then case-insensitive
+                if key in row:
+                    return row[key]
+                for k in row.keys():
+                    if k.lower() == key.lower():
+                        return row[k]
+                return default
+
+            for row in reader:
+                pose = {}
+                pose["x"] = _to_float(g(row, "x"))
+                pose["y"] = _to_float(g(row, "y"))
+                pose["z"] = _to_float(g(row, "z", default=str(default_z)))
+
+                pose["roll"]  = _to_float(g(row, "roll",  default=str(default_roll)))
+                pose["pitch"] = _to_float(g(row, "pitch", default=str(default_pitch)))
+                pose["yaw"]   = _to_float(g(row, "yaw"))
+
+                # joints q1..qN
+                for j in range(1, num_joints + 1):
+                    key = f"q{j}"
+                    pose[key] = _to_float(g(row, key, default="0"))
+
+                # angle unit conversion (if CSV in degrees)
+                if angles_in_degrees:
+                    pose["roll"]  = math.radians(pose["roll"])
+                    pose["pitch"] = math.radians(pose["pitch"])
+                    pose["yaw"]   = math.radians(pose["yaw"])
+                    for j in range(1, num_joints + 1):
+                        key = f"q{j}"
+                        pose[key] = math.radians(pose[key])
+
+                path.append(pose)
+
+        rospy.loginfo(f"[import_traj_csv] Loaded {len(path)} poses from {csv_path}")
         return path
 
 
@@ -200,13 +298,26 @@ def generate_colorbar(obstacle_threshold=obstacle_threshold, padding=0.5, cmap='
     ax.set_title("Colormap Distance Representation")
 
     plt.show()
+    
 
 if __name__ == '__main__':
     mn = MeshNav()
-    mn.run()
+    # mn.run()
     obstacle_mesh = mn.import_obstacles()
+    # o3d.visualization.draw_geometries([obstacle_mesh])
+    
     # path = mn.import_path("/home/rui/pcl_ws/src/mesh_nav/data/irosusingresult1.json")
     # path = mn.import_path("/home/rui/pcl_ws/src/mesh_nav/data/test_path_goal2.json")
+    csv_path = "/home/rui/ds/testsiros2025/testsremani_newdatasetvis/test_166.csv"  # <-- change to your CSV
+    # csv_path = "/home/rui/ds/testsiros2025/testsmeshnav_newdataset/test_166.csv"  # <-- change to your CSV
+    path = mn.import_traj_csv(
+        csv_path,
+        num_joints=6,               # UR5
+        angles_in_degrees=False,    # set True if your CSV has degrees
+        default_z=0.0,
+        default_roll=0.0,
+        default_pitch=0.0
+    )
     
-    # mn.plot_path_3d(path, obstacle_mesh)
+    mn.plot_path_3d(path, obstacle_mesh)
     # generate_colorbar()

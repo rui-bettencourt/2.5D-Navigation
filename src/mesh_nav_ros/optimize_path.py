@@ -51,16 +51,22 @@ NUM_JOINTS = 6
 # start = {'x': 0.0, 'y': 0.0, 'z': 0.0,
 #          'roll': 0.0, 'pitch': 0.0, 'yaw': 0.0,
 #          'q1': 0.0, 'q2': -0.05, 'q3': 0.0, 'q4': 0.02, 'q5': 0.0, 'q6': 0.0, 'q7': 0.0}
-start = {'x': -9.0, 'y': -3.8, 'z': 0.0,
-         'roll': 0.0, 'pitch': 0.0, 'yaw': -0.93,
-         'q1': -1.57, 'q2': 0.0, 'q3': 0.0, 'q4': 0.0, 'q5': 0.0, 'q6': 0.0}
+# start = {'x': -9.0, 'y': -3.8, 'z': 0.0,
+#          'roll': 0.0, 'pitch': 0.0, 'yaw': -0.93,
+#          'q1': -1.57, 'q2': 0.0, 'q3': 0.0, 'q4': 0.0, 'q5': 0.0, 'q6': 0.0}
+start = {'x': -6.210000038146973,'y': 4.730000019073486, 'z': 0.0,
+         'roll': 0.0, 'pitch': 0.0, 'yaw': -2.7871482490919166,
+         'q1': 1.763803235166418, 'q2': -1.1643435490308636, 'q3': -0.1136781008241705, 'q4': 2.944696011847194, 'q5':1.0816421304833923,'q6':-2.1755841880431595}
+goal = {'x': -3.3999998569488525, 'y': 6.700000286102295, 'z':0.0,
+        'roll': 0.0, 'pitch': 0.0, 'yaw': 2.755507937711566,
+        'q1':-2.933068704600025, 'q2': 0.1069066661056803,'q3':-1.9057753935953825,'q4':1.6200960843473051,'q5':0.8871834855915086,'q6':2.6615741335859715}
 
 # goal = {'x': 4.0, 'y': 0.0, 'z': 0.0,
 #         'roll': 0.0, 'pitch': 0.0, 'yaw': 0.0,
 #         'q1': 0.0, 'q2': -0.05, 'q3': 0.0, 'q4': 0.02, 'q5': 0.0, 'q6': 0.0, 'q7': 0.0}
-goal = {'x': 2.8, 'y': -3.8, 'z': 0.0,
-        'roll': 0.0, 'pitch': 0.0, 'yaw': -1.51,
-        'q1': 0.0, 'q2': -1.57, 'q3': 0.0, 'q4': 0.0, 'q5': 0.0, 'q6': 0.0}
+# goal = {'x': 2.8, 'y': -3.8, 'z': 0.0,
+#         'roll': 0.0, 'pitch': 0.0, 'yaw': -1.51,
+#         'q1': 0.0, 'q2': -1.57, 'q3': 0.0, 'q4': 0.0, 'q5': 0.0, 'q6': 0.0}
 
 safe_config = {'q1': 0.0, 'q2': -2.242, 'q3': 2.228, 'q4': 0.0, 'q5': 0.0, 'q6': 0.0}
 center_activation_safety = 0.8
@@ -368,7 +374,7 @@ class MeshNav(object):
 
         # --------- params / IO ----------
         csv_in        = rospy.get_param('~batch_csv_path', os.path.join(self.path, 'planner_tests.csv'))
-        out_dir       = rospy.get_param('~batch_out_dir',  os.path.join(self.path, 'testsmeshnav'))
+        out_dir       = rospy.get_param('~batch_out_dir',  os.path.join(self.path, 'testsmeshnav_newdataset'))
         start_id      = rospy.get_param('~batch_start_id', 0)
         resume        = rospy.get_param('~batch_resume', True)
         skip_if_exist = rospy.get_param('~batch_skip_if_traj_exists', True)
