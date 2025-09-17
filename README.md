@@ -29,7 +29,10 @@
     sudo apt-get install ros-$ROS_DISTRO-kdl-parser
     pip install ikpy pykdl
     ```
-
+    If you encounter an error while installing pykdl with pip, try installing it using apt instead:
+    ```bash
+    sudo apt install python3-pykdl
+    ```
     (Make sure you have [kdl_parser](https://github.com/ros/kdl_parser) and `pykdl` installed.)
     
 
