@@ -7,6 +7,8 @@
 #include <vector>
 #include <Eigen/Dense>
 #include <mutex>
+#include <unordered_set>
+
 
 #include "mesh_nav/VoxelSDF.h"
 #include "mesh_nav/RobotKinematics.h"
@@ -37,9 +39,16 @@ public:
 
     // Create/own the RobotKinematics instance
     bool attachRobot(const std::string& urdf_path,
-                     const std::string& base_link,
-                     const std::string& ee_link,
                      const std::vector<std::string>& joint_names);
+    void setRobotUrdfPath(const std::string& path) { robot_urdf_path_ = path; }
+    void setJointNames(const std::vector<std::string>& names) { joint_names_ = names; }
+    void setRepulsiveJointIndices(const std::vector<int>& indices) {
+        repulsive_joint_indices_ = indices;
+        repulsive_joint_indices_set_.clear();
+        repulsive_joint_indices_set_.reserve(repulsive_joint_indices_.size());
+        for (int i : repulsive_joint_indices_) repulsive_joint_indices_set_.insert(i);
+    }
+    void setRobotBasePoints(const std::vector<Vec3>& pts) { robot_points_base_ = pts; }
 
     inline bool hasRobot() const { return static_cast<bool>(robot_); }
     inline int  dof() const      { return dof_; }
@@ -56,6 +65,7 @@ public:
 
 private:
     // ---------- Robot and environment ----------
+    std::string robot_urdf_path_;
     std::unique_ptr<VoxelGrid> voxel_grid_;
     std::unique_ptr<VoxelGrid> voxel_grid_robot_;
     std::unique_ptr<RobotKinematics> robot_;
@@ -69,6 +79,8 @@ private:
     double center_activation_safety_ = 0.8;  // same meaning as python
     int    cur_wp_idx_ = 0;                  // current waypoint index
     int    path_len_   = 1;                  // total waypoints
+    std::vector<int> repulsive_joint_indices_{ /* default */ 3, 6 }; // 0-based: joints 4 and 7
+    std::unordered_set<int> repulsive_joint_indices_set_{3, 6};      // fast membership checks
 
     // ---------- Gains / params ----------
     double k_attraction_base, k_repulsion_base, k_repulsion_joints, k_repulsion_robot_joints;

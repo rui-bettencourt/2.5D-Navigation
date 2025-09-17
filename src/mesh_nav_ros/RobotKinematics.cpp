@@ -5,8 +5,7 @@
 using json = nlohmann::json;
 using namespace pinocchio;
 
-RobotKinematics::RobotKinematics(const std::string& urdf_path, const std::string& base_link, const std::string& ee_link, const std::vector<std::string>& joint_names)
-    : base_frame(base_link), end_effector(ee_link)
+RobotKinematics::RobotKinematics(const std::string& urdf_path, const std::vector<std::string>& joint_names)
 {
     if(use_pinocchio){
         model = std::make_unique<pinocchio::Model>();
@@ -30,8 +29,6 @@ RobotKinematics::RobotKinematics(const std::string& urdf_path, const std::string
 RobotKinematics::RobotKinematics(const RobotKinematics& o)
 : joint_ids(o.joint_ids)
 , num_joints(o.num_joints)
-, base_frame(o.base_frame)
-, end_effector(o.end_effector)
 , base_pose(o.base_pose)
 , joint_limits(o.joint_limits)
 {
@@ -54,8 +51,6 @@ RobotKinematics& RobotKinematics::operator=(const RobotKinematics& o)
 
   joint_ids   = o.joint_ids;
   num_joints  = o.num_joints;
-  base_frame  = o.base_frame;
-  end_effector= o.end_effector;
   base_pose   = o.base_pose;
   joint_limits= o.joint_limits;
 

@@ -63,7 +63,11 @@ class MeshNav(object):
                 sdf_bin_path = self.path + self.environmentsdffilename  # <-- adjust as needed
                 robot_sdf_bin_path = self.path + self.robotsdffilename
                 self.EBAND_CPP.initialize(sdf_bin_path, robot_sdf_bin_path)
-                self.EBAND_CPP.set_safe_config(self.safe_config, num_joints=self.NUM_JOINTS)
+                self.setRobotUrdfPath(self.roboturdffilename)
+                self.setRobotBasePoints(self.robot_points_base)
+                self.setJointNames(self.joints_names)
+                self.setRepulsiveJointIndices(self.repulsive_joints)
+                self.EBAND_CPP.set_safe_config(self.safe_config, num_joints=self.dof)
                 self.EBAND_CPP.set_dynamic_safety(True, center_activation_safety=self.center_activation_safety)
             except Exception as e:
                 print("Failed to initialize C++ ElasticBandPlanner: %s", e)
@@ -85,13 +89,13 @@ class MeshNav(object):
         path = sample_path(path, number_waypoints)
         path[-1]['yaw'] = goal['yaw']
 
-        path = interpolate_path(path, start, goal, self.NUM_JOINTS)
+        path = interpolate_path(path, start, goal, self.dof)
 
         try:
-            return  self.EBAND_CPP.update_path(path, self.max_iterations, self.convergence_distance)
+            return  self.EBAND_CPP.update_path(path, self.max_iterations, self.convergence_distance, num_joints=self.dof)
         except Exception as e:
             print("update_path failed (%s). Falling back to original path.", e)
-            return apply_safety_configuration_to_path(path, self.safe_config, self.NUM_JOINTS)
+            return apply_safety_configuration_to_path(path, self.safe_config, self.dof)
 
 if __name__ == '__main__':
     mn = MeshNav('/home/rui/mesh_nav_ws/src/mesh_nav/config/tiago.json')

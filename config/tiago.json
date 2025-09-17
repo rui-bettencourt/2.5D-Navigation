@@ -11,7 +11,7 @@
   "k_orientation_from_base": 0.0,
   "obstacle_threshold": 1.5,
   "manipulator": true,
-  "NUM_JOINTS": 7,
+  "dof": 7,
   "center_activation_safety": 0.8,
   "metersperwaypoint": 1.0,
   "max_iterations": 500,
@@ -19,5 +19,13 @@
   "safe_config": { "q1": 0.72, "q2": -0.9, "q3": -0.88, "q4": 1.94, "q5": -1.2, "q6": 1.37, "q7": 0.0 },
   "traversablegraphfilename": "traversablegroundgraph.pkl",
   "environmentsdffilename": "sdf.bin",
-  "robotsdffilename": "robot_sdf_002.bin"
+  "robotsdffilename": "robot_sdf_002.bin",
+  "roboturdffilename": "/home/rui/socrob_ws/src/isr_tiago/simulation/mbot_simulation_environments/robots/tiago_ouster.urdf",
+  "joints_names": ["arm_1_joint","arm_2_joint","arm_3_joint","arm_4_joint","arm_5_joint","arm_6_joint","arm_7_joint"],
+  "repulsive_joints": [3, 6],
+  "robot_points_base": [
+    [0.0, 0.0, 0.0],
+    [0.0, 0.0, 0.5],
+    [0.0, 0.0, 0.8]
+  ] // points that are inspected for collision of the base
 }

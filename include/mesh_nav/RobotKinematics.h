@@ -16,7 +16,7 @@
 class RobotKinematics {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-    RobotKinematics(const std::string& urdf_path, const std::string& base_link, const std::string& ee_link, const std::vector<std::string>& joint_names);
+    RobotKinematics(const std::string& urdf_path, const std::vector<std::string>& joint_names);
 
     // Deep-copy semantics (needed for TLS clones)
     RobotKinematics(const RobotKinematics& o);
@@ -90,8 +90,6 @@ private:
     // configuration/state that must be cloned
     std::vector<pinocchio::JointIndex> joint_ids;
     double num_joints;
-    std::string base_frame;
-    std::string end_effector;
     Eigen::Isometry3d base_pose = Eigen::Isometry3d::Identity();
     std::map<std::string, std::pair<double,double>> joint_limits;
 
