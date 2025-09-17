@@ -41,7 +41,10 @@ public:
     bool attachRobot(const std::string& urdf_path,
                      const std::vector<std::string>& joint_names);
     void setRobotUrdfPath(const std::string& path) { robot_urdf_path_ = path; }
-    void setJointNames(const std::vector<std::string>& names) { joint_names_ = names; }
+    void setJointNames(const std::vector<std::string>& names, const std::string& joint_limits_path) { 
+        joint_names_ = names; 
+        joints_limits_path_ = joint_limits_path;
+    }
     void setRepulsiveJointIndices(const std::vector<int>& indices) {
         repulsive_joint_indices_ = indices;
         repulsive_joint_indices_set_.clear();
@@ -66,6 +69,7 @@ public:
 private:
     // ---------- Robot and environment ----------
     std::string robot_urdf_path_;
+    std::string joints_limits_path_;
     std::unique_ptr<VoxelGrid> voxel_grid_;
     std::unique_ptr<VoxelGrid> voxel_grid_robot_;
     std::unique_ptr<RobotKinematics> robot_;

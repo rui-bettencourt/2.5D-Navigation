@@ -62,11 +62,11 @@ class MeshNav(object):
                 # Initialize with your SDF/voxel file
                 sdf_bin_path = self.path + self.environmentsdffilename  # <-- adjust as needed
                 robot_sdf_bin_path = self.path + self.robotsdffilename
+                self.EBAND_CPP.setRobotUrdfPath(self.roboturdffilename)
+                self.EBAND_CPP.setRobotBasePoints(self.robot_points_base)
+                self.EBAND_CPP.setJointNames(self.joints_names, self.path+self.joint_limits_path)
                 self.EBAND_CPP.initialize(sdf_bin_path, robot_sdf_bin_path)
-                self.setRobotUrdfPath(self.roboturdffilename)
-                self.setRobotBasePoints(self.robot_points_base)
-                self.setJointNames(self.joints_names)
-                self.setRepulsiveJointIndices(self.repulsive_joints)
+                self.EBAND_CPP.setRepulsiveJointIndices(self.repulsive_joints)
                 self.EBAND_CPP.set_safe_config(self.safe_config, num_joints=self.dof)
                 self.EBAND_CPP.set_dynamic_safety(True, center_activation_safety=self.center_activation_safety)
             except Exception as e:
@@ -100,3 +100,13 @@ class MeshNav(object):
 if __name__ == '__main__':
     mn = MeshNav('/home/rui/mesh_nav_ws/src/mesh_nav/config/tiago.json')
     print(mn.safe_config)
+    start = {'x': 0.0, 'y': 0.0, 'z': 0.0,
+         'roll': 0.0, 'pitch': 0.0, 'yaw': 0.0,
+         'q1': 0.0, 'q2': -0.05, 'q3': 0.0, 'q4': 0.02, 'q5': 0.0, 'q6': 0.0, 'q7': 0.0}
+
+    goal = {'x': 4.0, 'y': 0.0, 'z': 0.0,
+            'roll': 0.0, 'pitch': 0.0, 'yaw': 0.0,
+            'q1': 0.0, 'q2': -0.05, 'q3': 0.0, 'q4': 0.02, 'q5': 0.0, 'q6': 0.0, 'q7': 0.0}
+    
+    path = mn.plan(start,goal)
+    print(path)

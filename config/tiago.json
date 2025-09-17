@@ -1,5 +1,5 @@
 {
-  "path": "data/",
+  "path": "/home/rui/mesh_nav_ws/src/mesh_nav/data/",
   "k_attraction_base": 0.005,
   "k_repulsion_base": 0.00002,
   "k_attraction_joints": 0.2,
@@ -21,11 +21,12 @@
   "environmentsdffilename": "sdf.bin",
   "robotsdffilename": "robot_sdf_002.bin",
   "roboturdffilename": "/home/rui/socrob_ws/src/isr_tiago/simulation/mbot_simulation_environments/robots/tiago_ouster.urdf",
+  "joint_limits_path": "joints_limits.json",
   "joints_names": ["arm_1_joint","arm_2_joint","arm_3_joint","arm_4_joint","arm_5_joint","arm_6_joint","arm_7_joint"],
   "repulsive_joints": [3, 6],
   "robot_points_base": [
     [0.0, 0.0, 0.0],
     [0.0, 0.0, 0.5],
     [0.0, 0.0, 0.8]
-  ] // points that are inspected for collision of the base
+  ]
 }

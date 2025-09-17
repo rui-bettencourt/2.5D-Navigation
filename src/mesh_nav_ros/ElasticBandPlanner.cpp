@@ -88,7 +88,7 @@ bool ElasticBandPlanner::attachRobot(const std::string& urdf_path,
                                      const std::vector<std::string>& joint_names)
 {
     try {
-        robot_ = std::make_unique<RobotKinematics>(urdf_path, joint_names);
+        robot_ = std::make_unique<RobotKinematics>(urdf_path, joint_names, joints_limits_path_);
         joint_names_ = joint_names;
         dof_ = static_cast<int>(robot_->getDOF());
         if (dof_ != static_cast<int>(joint_names_.size())) {

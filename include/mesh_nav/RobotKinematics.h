@@ -16,7 +16,7 @@
 class RobotKinematics {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-    RobotKinematics(const std::string& urdf_path, const std::vector<std::string>& joint_names);
+    RobotKinematics(const std::string& urdf_path, const std::vector<std::string>& joint_names, const std::string& joint_limits_path);
 
     // Deep-copy semantics (needed for TLS clones)
     RobotKinematics(const RobotKinematics& o);
