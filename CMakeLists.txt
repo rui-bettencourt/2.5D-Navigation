@@ -82,17 +82,20 @@ else()
   )
 endif()
 target_include_directories(elastic_band_planner_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
-ament_target_dependencies(elastic_band_planner_core rclcpp std_msgs)
+ament_target_dependencies(elastic_band_planner_core rclcpp std_msgs pinocchio)
 
 # Python bindings
 pybind11_add_module(elastic_band_planner_cpp
   bindings/ElasticBandBinding.cpp
 )
+
 target_link_libraries(elastic_band_planner_cpp PRIVATE
   elastic_band_planner_core
   VoxelSDF
   RobotKinematics
+  pinocchio::pinocchio
 )
+
 # Note: ament_target_dependencies not compatible with pybind11 keyword signature
 target_include_directories(elastic_band_planner_cpp PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 

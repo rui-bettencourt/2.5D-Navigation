@@ -11,7 +11,7 @@ from mesh_nav_ros.aux_functions import interpolate_path, sample_path, calculate_
 ws = os.path.abspath(os.path.dirname(__file__))
 print(ws)
 for _ in range(10):  # walk up a few levels
-    cand = os.path.join(ws, 'devel', 'lib')
+    cand = os.path.join(ws, 'build', 'mesh_nav')
     if os.path.isdir(cand):
         if cand not in sys.path:
             sys.path.append(cand)
@@ -62,11 +62,11 @@ class MeshNav(object):
                 # Initialize with your SDF/voxel file
                 sdf_bin_path = self.path + self.environmentsdffilename  # <-- adjust as needed
                 robot_sdf_bin_path = self.path + self.robotsdffilename
+                self.EBAND_CPP.setRobotUrdfPath(self.roboturdffilename)
+                self.EBAND_CPP.setRobotBasePoints(self.robot_points_base)
+                self.EBAND_CPP.setJointNames(self.joints_names)
                 self.EBAND_CPP.initialize(sdf_bin_path, robot_sdf_bin_path)
-                self.setRobotUrdfPath(self.roboturdffilename)
-                self.setRobotBasePoints(self.robot_points_base)
-                self.setJointNames(self.joints_names)
-                self.setRepulsiveJointIndices(self.repulsive_joints)
+                self.EBAND_CPP.setRepulsiveJointIndices(self.repulsive_joints)
                 self.EBAND_CPP.set_safe_config(self.safe_config, num_joints=self.dof)
                 self.EBAND_CPP.set_dynamic_safety(True, center_activation_safety=self.center_activation_safety)
             except Exception as e:
