@@ -13,7 +13,7 @@
 1. Clone the repository into your ROS workspace:
     ```bash
     cd ~/(your_workspace))/src
-    git clone --recursive https://github.com/yourusername/mesh_nav.git
+    git clone --recursive https://github.com/rui-bettencourt/2.5D-Navigation.git
     ```
 
 2. Install dependencies:

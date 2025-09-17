@@ -79,6 +79,32 @@ static std::vector<double> safe_from_py(const py::handle &obj, int num_joints) {
     return q;
 }
 
+static std::vector<Vec3> vec3_list_from_py(const py::handle& obj) {
+    std::vector<Vec3> out;
+
+    if (!py::isinstance<py::sequence>(obj))
+        throw std::runtime_error("robot_points_base must be a sequence");
+
+    py::sequence seq = obj.cast<py::sequence>();
+    out.reserve(seq.size());
+
+    for (auto item : seq) {
+        if (py::isinstance<py::sequence>(item)) {
+            py::sequence t = item.cast<py::sequence>();
+            if (t.size() != 3) throw std::runtime_error("Each point must have 3 elements [x,y,z]");
+            out.emplace_back(t[0].cast<double>(), t[1].cast<double>(), t[2].cast<double>());
+        } else if (py::isinstance<py::dict>(item)) {
+            py::dict d = item.cast<py::dict>();
+            if (!d.contains("x") || !d.contains("y") || !d.contains("z"))
+                throw std::runtime_error("Dict point must have keys 'x','y','z'");
+            out.emplace_back(d["x"].cast<double>(), d["y"].cast<double>(), d["z"].cast<double>());
+        } else {
+            throw std::runtime_error("Each point must be a 3-seq or dict with x,y,z");
+        }
+    }
+    return out;
+}
+
 PYBIND11_MODULE(elastic_band_planner_cpp, m) {
     py::class_<ElasticBandPlanner>(m, "ElasticBandPlanner")
         .def(py::init<double,double,double,double,double,double,double,double,double,double,double>(),
@@ -89,21 +115,40 @@ PYBIND11_MODULE(elastic_band_planner_cpp, m) {
              py::arg("k_position_from_orientation")=0.0, py::arg("k_safety_joints")=0.0,
              py::arg("obstacle_threshold")=1.5)
 
+        // NEW: configure URDF path and joint names from Python
+        .def("setRobotUrdfPath", &ElasticBandPlanner::setRobotUrdfPath,
+             py::arg("urdf_path"),
+             "Set the absolute path to the robot URDF used by attachRobot().")
+        .def("setJointNames", &ElasticBandPlanner::setJointNames,
+             py::arg("joint_names"),
+             "Set the ordered list of joint names (e.g., ['arm_1_joint', ..., 'arm_7_joint']).")
 
         .def("initialize", &ElasticBandPlanner::initialize,
              py::arg("sdf_bin_path"), py::arg("robot_sdf_bin_path"),
-             "Initialize the planner with an SDF file and default robot points.")
+             "Initialize the planner with environment and robot SDFs.")
+        .def("setRepulsiveJointIndices", &ElasticBandPlanner::setRepulsiveJointIndices,
+             py::arg("indices"),
+             "Set 0-based joint indices for which repulsive torques are computed "
+             "(e.g., [3, 6] means joints 4 and 7).")
+        .def("setRobotBasePoints",
+             [](ElasticBandPlanner& self, py::object points) {
+                 self.setRobotBasePoints(vec3_list_from_py(points));
+             },
+             py::arg("points"),
+             "Set base-frame probe points as [[x,y,z], ...] or [{'x':..,'y':..,'z':..}, ...].")
+        .def("update_path",
+             [](ElasticBandPlanner &self, py::list path,
+                int iterations, double convergence_threshold, int num_joints){
+                 PathMatrix pm = path_from_py(path, num_joints);
+                 auto result = self.update_path(pm, iterations, convergence_threshold);
+                 return path_to_py(result, num_joints);
+             },
+             py::arg("path"),
+             py::arg("iterations")=100,
+             py::arg("convergence_threshold")=1e-3,
+             py::arg("num_joints")=7)
 
-        .def("update_path", [](ElasticBandPlanner &self, py::list path,
-                               int iterations, double convergence_threshold){
-            PathMatrix pm = path_from_py(path,7);
-            // Call the original C++ method using the Python obs_mesh object
-            auto result = self.update_path(pm, iterations, convergence_threshold);
-            return path_to_py(result,7);
-        }, py::arg("path"),
-           py::arg("iterations")=100, py::arg("convergence_threshold")=1e-3)
-
-        // --- New: pass safe configuration from Python (dict or list/tuple) ---
+        // Pass safe configuration (dict {q1..qN} or sequence)
         .def("set_safe_config",
              [](ElasticBandPlanner &self, py::object safe_cfg, int num_joints) {
                  self.setSafeConfig(safe_from_py(safe_cfg, num_joints));
@@ -112,11 +157,12 @@ PYBIND11_MODULE(elastic_band_planner_cpp, m) {
              py::arg("num_joints") = 7,
              "Set a safety configuration. Accepts dict {q1..qN} or a sequence.")
 
-        // --- New: enable/disable dynamic safety weighting (+ center position) ---
+        // Enable/disable dynamic safety weighting (+ center position)
         .def("set_dynamic_safety",
              &ElasticBandPlanner::setDynamicSafety,
              py::arg("enabled") = true,
              py::arg("center_activation_safety") = 0.8,
              "Enable dynamic safety weighting and set its center along the path.");
-    m.doc() = "Elastic band planner with voxel SDF integration (no RobotKinematics/RobotModel bindings).";
+
+    m.doc() = "Elastic band planner with voxel SDF integration (Robot URDF/joint configuration exposed).";
 }

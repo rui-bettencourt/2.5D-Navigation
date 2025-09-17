@@ -70,16 +70,14 @@ bool ElasticBandPlanner::initialize(const std::string& sdf_bin_path, const std::
     }
 
     // A very light body approximation (base frame)
-    robot_points_base_.clear();
-    robot_points_base_.push_back(Vec3(0.0, 0.0, 0.0));
-    robot_points_base_.push_back(Vec3(0.0, 0.0, 0.5));
-    robot_points_base_.push_back(Vec3(0.0, 0.0, 0.8));
+    if (robot_points_base_.empty()) {
+        robot_points_base_.clear();
+        robot_points_base_.push_back(Vec3(0.0, 0.0, 0.0)); // TODO
+        robot_points_base_.push_back(Vec3(0.0, 0.0, 0.5));
+        robot_points_base_.push_back(Vec3(0.0, 0.0, 0.8));
+    }
 
-    std::vector<std::string> joint_names = {
-    "arm_1_joint","arm_2_joint","arm_3_joint","arm_4_joint","arm_5_joint","arm_6_joint","arm_7_joint"
-    };
-    attachRobot("/home/rui/socrob_ws/src/isr_tiago/simulation/mbot_simulation_environments/robots/tiago_ouster.urdf", "base_link", "arm_7_link", joint_names);
-
+    attachRobot(robot_urdf_path_, joint_names_);
 
     std::cout << "ElasticBandPlanner initialized with SDF, Kinematics and robot body points.\n";
     return true;
@@ -87,12 +85,10 @@ bool ElasticBandPlanner::initialize(const std::string& sdf_bin_path, const std::
 
 // ----------------- robot attach -----------------
 bool ElasticBandPlanner::attachRobot(const std::string& urdf_path,
-                                     const std::string& base_link,
-                                     const std::string& ee_link,
                                      const std::vector<std::string>& joint_names)
 {
     try {
-        robot_ = std::make_unique<RobotKinematics>(urdf_path, base_link, ee_link, joint_names);
+        robot_ = std::make_unique<RobotKinematics>(urdf_path, joint_names);
         joint_names_ = joint_names;
         dof_ = static_cast<int>(robot_->getDOF());
         if (dof_ != static_cast<int>(joint_names_.size())) {
@@ -263,22 +259,24 @@ Eigen::VectorXd ElasticBandPlanner::thread_joint(int joint_index,
     // Tau from attractive force
     Eigen::VectorXd tau_attr = rk.calculateJointTorques(f_attr_world, joint_index, q_cur, &J);
 
-    // Repulsive force (world) using the joint position as the probe
-    Eigen::Vector3d f_rep_world = compute_repulsive_force(std::vector<Vec3>{joint_pos}, voxel_grid_.get());
-    Eigen::Vector3d f_rep_robot = compute_repulsive_force(std::vector<Vec3>{joint_pos}, voxel_grid_robot_.get());
+    if(repulsive_joint_indices_set_.count(joint_index) > 0){   //only compute for joint 4 and 7
+        // Repulsive force (world) using the joint position as the probe
+        Eigen::Vector3d f_rep_world = compute_repulsive_force(std::vector<Vec3>{joint_pos}, voxel_grid_.get());
+        Eigen::Vector3d f_rep_robot = compute_repulsive_force(std::vector<Vec3>{joint_pos}, voxel_grid_robot_.get());
 
-    // Tau from repulsive force
-    Eigen::VectorXd tau_rep = rk.calculateJointTorques(f_rep_world, joint_index, q_cur, &J);
+        // Tau from repulsive force
+        Eigen::VectorXd tau_rep = rk.calculateJointTorques(f_rep_world, joint_index, q_cur, &J);
 
-    if(k_repulsion_robot_joints>0.0){
-        Eigen::VectorXd tau_rep_robot = rk.calculateJointTorques(f_rep_robot, joint_index, q_cur, &J);
+        if(k_repulsion_robot_joints>0.0){
+            Eigen::VectorXd tau_rep_robot = rk.calculateJointTorques(f_rep_robot, joint_index, q_cur, &J);
 
-        torques += (k_repulsion_robot_joints * tau_rep_robot);
+            torques += (k_repulsion_robot_joints * tau_rep_robot);
+        }
+        torques += (k_repulsion_joints  * tau_rep);
     }
 
     // Combine (attractive + repulsive)
     torques += (k_attraction_joints * tau_attr);
-    torques += (k_repulsion_joints  * tau_rep);
 
     // --- Safety (attract joint toward safe configuration) ---
     if (!safe_config_.empty()) {
@@ -357,10 +355,8 @@ Row ElasticBandPlanner::thread_waypoint(int i, RobotKinematics& rk)
         // --- Keep inner loop SERIAL ---
         Eigen::VectorXd total_torques = Eigen::VectorXd::Zero(dof_);
         for (int j = 0; j < dof_; ++j) {
-            if(j==3 || j==6){   //only compute for joint 4 and 7
-                auto tau = thread_joint(j+1, prev_positions[j], cur_positions[j], next_positions[j], q_cur, rk, i, static_cast<int>(path_matrix.rows()));
-                total_torques += tau;
-            }
+            auto tau = thread_joint(j+1, prev_positions[j], cur_positions[j], next_positions[j], q_cur, rk, i, static_cast<int>(path_matrix.rows()));
+            total_torques += tau;
         }
 
         // Update joints and clamp
