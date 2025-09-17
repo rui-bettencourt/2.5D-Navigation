@@ -215,3 +215,7 @@ src/mesh_nav_ros/mpc/__pycache__/functions.cpython-38.pyc
 src/mesh_nav_ros/mpc/__pycache__/mpc_linear.cpython-38.pyc
 src/mesh_nav_ros/mpc/__pycache__/mpc.cpython-38.pyc
 src/mesh_nav_ros/tests/__pycache__/construct_ikpy_chains.cpython-38.pyc
+data/*.csv
+data/.~lock.planning_times_goalb25.csv#
+data/collision_configurations.txt
+.vscode/launch.json
