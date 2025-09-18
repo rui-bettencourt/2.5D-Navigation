@@ -21,6 +21,7 @@
   "environmentsdffilename": "sdf.bin",
   "robotsdffilename": "robot_sdf_002.bin",
   "roboturdffilename": "/home/rods/tiago_ws/src/full_body_nav/urdf/tiago_ouster.urdf",
+  "joint_limits_path": "joints_limits.json",
   "joints_names": ["arm_1_joint","arm_2_joint","arm_3_joint","arm_4_joint","arm_5_joint","arm_6_joint","arm_7_joint"],
   "repulsive_joints": [3, 6],
   "robot_points_base": [
