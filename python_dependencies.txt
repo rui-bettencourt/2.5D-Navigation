@@ -1,0 +1,4 @@
+open3d==0.18.0
+python-fcl==0.7.0
+octomap-python>=1.8.0
+numpy

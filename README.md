@@ -16,13 +16,12 @@
     git clone --recursive https://github.com/rui-bettencourt/2.5D-Navigation.git
     ```
 
-2. Install dependencies:
-    You need:
-    ROS Noetic
-    open3d=0.18.0
-    python-fcl=0.7.0
-    octomap-python=1.8.0
-    numpy
+2. Install python dependencies:
+    ```bash
+    pip install -r python_dependencies.txt
+    ```
+    You also need:
+    ROS Humble
 
     pinocchio (https://github.com/stack-of-tasks/pinocchio?tab=readme-ov-file#installation) COMPILE USING RELEASE TO BE FAST!!!: using ros: catkin config --cmake-args -DCMAKE_BUILD_TYPE=Release
     ```bash
@@ -39,8 +38,8 @@
 3. Build the workspace:
     ```bash
     cd ~/(your_workspace)
-    catkin build
-    source devel/setup.bash
+    colcon build --packages-select mesh_nav
+    source install/setup.bash
     ```
 
 ## Usage
