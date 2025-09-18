@@ -121,6 +121,7 @@ PYBIND11_MODULE(elastic_band_planner_cpp, m) {
              "Set the absolute path to the robot URDF used by attachRobot().")
         .def("setJointNames", &ElasticBandPlanner::setJointNames,
              py::arg("joint_names"),
+             py::arg("joint_limits_path"),
              "Set the ordered list of joint names (e.g., ['arm_1_joint', ..., 'arm_7_joint']).")
 
         .def("initialize", &ElasticBandPlanner::initialize,

@@ -5,7 +5,7 @@
 using json = nlohmann::json;
 using namespace pinocchio;
 
-RobotKinematics::RobotKinematics(const std::string& urdf_path, const std::vector<std::string>& joint_names)
+RobotKinematics::RobotKinematics(const std::string& urdf_path, const std::vector<std::string>& joint_names, const std::string& joint_limits_path)
 {
     if(use_pinocchio){
         model = std::make_unique<pinocchio::Model>();
@@ -22,7 +22,7 @@ RobotKinematics::RobotKinematics(const std::string& urdf_path, const std::vector
     num_joints =joint_names.size();
 
     // Load joint limits from JSON file
-    loadJointLimits("data/joints_limits.json", joint_names);
+    loadJointLimits(joint_limits_path, joint_names);
 }
 
 // --- deep copy ctor ---
