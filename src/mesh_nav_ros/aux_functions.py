@@ -48,7 +48,7 @@ def interpolate_path(path, start, goal, dof):
             **step,
             'roll': interpolated_angles[0],
             'pitch': interpolated_angles[1],
-            **{f'q{j}': interpolated_angles[j + 1] for j in range(1, dof)}
+            **{f'q{j}': interpolated_angles[j + 1] for j in range(1, dof+1)}
         }
         
         interpolated_path.append(updated_step)
