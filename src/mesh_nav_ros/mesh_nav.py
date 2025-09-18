@@ -85,7 +85,7 @@ class MeshNav(object):
         end_coord = [goal['x'], goal['y'], goal['yaw']]
         
         path = self.Graph.plan(start_coord, end_coord)
-        number_waypoints = int(np.ceil(self.metersperwaypoint * calculate_path_distance(path)))
+        number_waypoints = int(np.ceil(calculate_path_distance(path)/ self.metersperwaypoint))
         path = sample_path(path, number_waypoints)
         path[-1]['yaw'] = goal['yaw']
 
