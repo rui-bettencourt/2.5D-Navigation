@@ -99,7 +99,6 @@ class MeshNav(object):
 
 if __name__ == '__main__':
     mn = MeshNav('/home/rui/mesh_nav_ws/src/mesh_nav/config/tiago.json')
-    print(mn.safe_config)
     start = {'x': 0.0, 'y': 0.0, 'z': 0.0,
          'roll': 0.0, 'pitch': 0.0, 'yaw': 0.0,
          'q1': 0.0, 'q2': -0.05, 'q3': 0.0, 'q4': 0.02, 'q5': 0.0, 'q6': 0.0, 'q7': 0.0}
