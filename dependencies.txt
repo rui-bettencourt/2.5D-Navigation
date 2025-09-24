@@ -6,3 +6,5 @@ numpy
 
 FOR CPP:
 pinocchio (https://github.com/stack-of-tasks/pinocchio?tab=readme-ov-file#installation) COMPILE USING RELEASE TO BE FAST!!!: using ros: catkin config --cmake-args -DCMAKE_BUILD_TYPE=Release
+
+Eigen 3.4.0. If in ubuntu 20, where the eigen installed by sudo apt is 3.3, install from source from git clone --branch 3.4.0 --depth 1 https://gitlab.com/libeigen/eigen.git

@@ -54,6 +54,10 @@
   <exec_depend>pinocchio</exec_depend>
   <build_depend>pybind11</build_depend>
   <exec_depend>pybind11</exec_depend>
+  <build_depend>eigen</build_depend>
+  <exec_depend>eigen</exec_depend>
+  <build_depend>nlohmann_json</build_depend>
+  <exec_depend>nlohmann_json</exec_depend>
 
 
   <!-- The export tag contains other, unspecified, tags -->

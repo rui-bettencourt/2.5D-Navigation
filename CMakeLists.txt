@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.0.2)
+cmake_minimum_required(VERSION 3.3)
 project(mesh_nav)
 
 find_package(catkin REQUIRED COMPONENTS
@@ -134,6 +134,14 @@ target_link_libraries(SDFcomputing
   ${catkin_LIBRARIES} SDFfromPLY OpenMP::OpenMP_CXX
 )
 # add_compile_options(-O3 -march=native)
+add_executable(SDFfromPLYtest
+  src/mesh_nav_ros/tests/tester_SDFfromPLY_IGL.cpp
+)
+
+target_link_libraries(SDFfromPLYtest
+  ${catkin_LIBRARIES}
+  SDFfromPLY OpenMP::OpenMP_CXX
+)
 
 add_executable(VoxelSDFtester
   src/mesh_nav_ros/tests/VoxelSDFtester.cpp
