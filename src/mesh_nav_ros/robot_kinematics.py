@@ -4,6 +4,7 @@ import pytorch_kinematics as pk
 import numpy as np
 import json
 import time
+import xml.etree.ElementTree as ET
 
 
 # Check if CUDA is available
@@ -54,8 +55,8 @@ class RobotKinematics:
         # save joints limits to json file
         # Convert all NumPy arrays and floats to Python lists and floats
         json_joints_limits = {key: list(map(float, value)) for key, value in self.joints_limits.items()}
-        with open("/home/rui/pcl_ws/src/mesh_nav/data/joints_limits.json", "w") as file:
-                json.dump(json_joints_limits, file, indent=4)
+        # with open("/home/rui/pcl_ws/src/mesh_nav/data/joints_limits.json", "w") as file:
+        #         json.dump(json_joints_limits, file, indent=4)
 
         # Create all joints chains
         self.joint6_chain = pk.SerialChain(self.joint7_chain, "arm_6_link", "base_footprint")

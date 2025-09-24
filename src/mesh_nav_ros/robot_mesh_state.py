@@ -10,7 +10,30 @@ import open3d as o3d
 import numpy as np
 import tf
 import tf.transformations
+import re
+from pathlib import Path
 from copy import deepcopy
+
+def T_from_rpy_xyz(rpy, xyz):
+    T = tf.transformations.euler_matrix(rpy[0], rpy[1], rpy[2])  # 4x4
+    T[:3, 3] = xyz
+    return T
+
+def scale_matrix(scale):
+    # scale can be None, float, or 3-vector
+    if scale is None:
+        return np.eye(4)
+    if isinstance(scale, (list, tuple, np.ndarray)):
+        sx, sy, sz = float(scale[0]), float(scale[1]), float(scale[2])
+    else:
+        sx = sy = sz = float(scale)
+    S = np.eye(4)
+    S[0, 0], S[1, 1], S[2, 2] = sx, sy, sz
+    return S
+
+def quaternion_to_matrix(q):
+    R4 = tf.transformations.quaternion_matrix(q)  # 4x4
+    return R4
 
 class Pose(object):
     def __init__(self, position=[0.0, 0.0, 0.0], orientation=0.0, joints={}):
@@ -56,7 +79,10 @@ class RobotMeshState(object):
         joints = ['arm_1_joint', 'arm_2_joint', 'arm_3_joint', 'arm_4_joint', 'arm_5_joint', 'arm_6_joint', 'arm_7_joint']#, 'torso_lift_joint']
         self.not_body = ["arm_1_link", "arm_2_link", "arm_3_link","arm_4_link", "arm_5_link", "arm_6_link", "arm_6_link",'gripper_link', 'gripper_right_finger_link', 'gripper_left_finger_link']
         robot_base_link = 'base_link'
+        self.urdf_source_path = "/home/rui/mesh_nav_ws/src/REMANI-Planner/remani_planner/mm_config/meshes/ur5"
         ##############
+        
+        self.base_link = robot_base_link
 
         ## variables
         self.robot_kinematics = robot_kinematics
@@ -66,6 +92,9 @@ class RobotMeshState(object):
         self.og_mesh_dict = {}
         self.robot_state = Pose()
         self.robot_bbs = {}
+        self.link_world_T = {}
+        self.visual_origin_T = {}
+        self.visual_world_T = {}
         self.robot_mesh_bb = self.simplify_robot_mesh()
         self.body_bbs = {link_name: bb for link_name, bb in self.robot_bbs.items() if link_name not in self.not_body}
         # the white list structure is {'joint_to_be_connected': [ 'parent_joint', 'extra joints between parent and matrix', 4x4 numpy transformation]}
@@ -97,13 +126,29 @@ class RobotMeshState(object):
         if uri.startswith("package://"):
             package_name = uri[len("package://"):].split('/')[0]
             relative_path = uri[len(f"package://{package_name}/"):]
-            rospack = rospkg.RosPack()
-            package_path = rospack.get_path(package_name)
-            return f"{package_path}/{relative_path}"
+            try:
+                rospack = rospkg.RosPack()
+                package_path = rospack.get_path(package_name)
+                return f"{package_path}/{relative_path}"
+            except rospkg.common.ResourceNotFound:
+                # Fallback: infer path relative to the URDF file
+                # You must store this when you load the URDF
+                # self.urdf_source_path = <path to your URDF file>
+                if hasattr(self, "urdf_source_path"):
+                    base = os.path.dirname(self.urdf_source_path)
+                    # If the URDF is in .../meshes/FastArmer/FastArmer.urdf and
+                    # URIs are "package://FastArmer/<stuff>", this usually works:
+                    guess = os.path.join(base, relative_path)
+                    if os.path.exists(guess):
+                        return guess
+                rospy.logwarn(f"Could not resolve {uri}. Returning as-is.")
+                return uri
+        elif uri.startswith("file://"):
+            return uri[len("file://"):]
         return uri
 
     def load_mesh_from_geometry(self, geometry):
-        unsupported_formats = ['.dae']
+        unsupported_formats = []#['.dae']
         if isinstance(geometry, Mesh):
             mesh_path = self.resolve_package_uri(geometry.filename)
             _, ext = os.path.splitext(mesh_path)
@@ -118,129 +163,438 @@ class RobotMeshState(object):
         meshes = []
         listener = tf.TransformListener()
         for link in self.robot.links:
-            if link.name == self.robot.get_root():
-                continue
-            if self.only_body_mesh and link.name not in self.not_body:
-                try:
-                    (trans, rot) = listener.lookupTransform('/base_link', link.name, rospy.Time(0))
-                except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
-                    continue
-                for visual in link.visuals:
-                    mesh = self.load_mesh_from_geometry(visual.geometry)
-                    if mesh:
-                        transformation = np.eye(4)
-                        transformation[:3, :3] = tf.transformations.quaternion_matrix(rot)[:3, :3]
-                        transformation[:3, 3] = np.array(trans)
-                        mesh.transform(transformation)
-                        meshes.append(mesh)
-
-        if meshes:
-            combined_mesh = meshes[0]
-            for mesh in meshes[1:]:
-                combined_mesh += mesh
-            return combined_mesh
-        return None
-
-    def simplify_robot_mesh(self):
-        meshes = []
-        listener = tf.TransformListener()
-        for link in self.robot.links:
-
-            if link.name == self.robot.get_root():
+            if self.only_body_mesh and link.name in self.not_body:
                 continue
 
+            # Get the TF of the link in the world/base frame
             try:
-                (trans, rot) = listener.lookupTransform('/base_link', link.name, rospy.Time(0))
+                trans, rot = listener.lookupTransform('/base_link', link.name, rospy.Time(0))
             except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
                 continue
-            for visual in link.visuals:
+
+            T_world_link = quaternion_to_matrix(rot)
+            T_world_link[:3, 3] = np.array(trans)
+
+            for visual in getattr(link, 'visuals', []):
                 mesh = self.load_mesh_from_geometry(visual.geometry)
-                if mesh and len(mesh.vertices) > 0:
-                    self.og_mesh_dict[link.name] = deepcopy(mesh).simplify_vertex_clustering(0.05)
-                    transformation = np.eye(4)
-                    transformation[:3, :3] = tf.transformations.quaternion_matrix(rot)[:3, :3]
-                    transformation[:3, 3] = np.array(trans)
-                    mesh.transform(transformation)
-                    self.robot_bbs[link.name] = mesh.get_minimal_oriented_bounding_box()
-                    self.robot_mesh_dict[link.name] = mesh.simplify_vertex_clustering(0.05)
-                    meshes.append(mesh)
+                if mesh is None:
+                    continue
 
-        if meshes:
-            combined_mesh = o3d.geometry.TriangleMesh.create_from_oriented_bounding_box(meshes[0].get_minimal_oriented_bounding_box())
-            for mesh in meshes[1:]:
-                combined_mesh += o3d.geometry.TriangleMesh.create_from_oriented_bounding_box(mesh.get_minimal_oriented_bounding_box())
-            return combined_mesh
-        rospy.logerr("Could not simplify robot mesh!")
-        return None
+                # Visual origin (relative to link)
+                if getattr(visual, 'origin', None) is not None:
+                    xyz = np.array(getattr(visual.origin, 'xyz', [0.0, 0.0, 0.0]), dtype=float)
+                    rpy = np.array(getattr(visual.origin, 'rpy', [0.0, 0.0, 0.0]), dtype=float)
+                else:
+                    xyz = np.zeros(3)
+                    rpy = np.zeros(3)
+                T_visual = T_from_rpy_xyz(rpy, xyz)
 
-    def update_robot_arm_bbs(self, configuration, move_base = True, local_frame = True):
-        # calculate bbs for a certain joint configuration and base_position, if in world frame
-        # i'm going to try with the bb but i might need to do this on the mesh
-        # if bbs is None:
-        #     bbs = self.robot_bbs
-        # new_bbs = (deepcopy(bbs))
-        new_mesh = (deepcopy(self.robot_mesh_dict))
+                # Mesh scale from URDF (uniform or 3-vector)
+                mesh_scale = None
+                if hasattr(visual.geometry, 'scale'):
+                    mesh_scale = visual.geometry.scale
+                S = scale_matrix(mesh_scale)
+
+                # Compose: mesh_local --S--> visual --T_visual--> link --T_world_link--> world
+                T_total = T_world_link @ T_visual @ S
+
+                mesh_t = o3d.geometry.TriangleMesh(mesh)  # copy to avoid in-place reuse issues
+                mesh_t.transform(T_total)
+                meshes.append(mesh_t)
+
+        if not meshes:
+            return None
+
+        combined = meshes[0]
+        for m in meshes[1:]:
+            combined += m
+        return combined
+
+    def compute_link_poses_from_urdf(self, joint_positions=None, base_link='mm_base'):
+        """
+        Returns dict: link_name -> 4x4 pose in base_link frame.
+        Uses URDF structure only (no TF). Joints default to 0 if not provided.
+        """
+
+        # Map link -> outgoing joints (children)
+        children = {}
+        for j in self.robot.joints:
+            children.setdefault(j.parent, []).append(j)
+
+        # joint positions dict
+        q = joint_positions or {}
+        # default pose of base_link is identity
+        poses = {base_link: np.eye(4)}
+
+        # DFS over the kinematic tree
+        stack = [base_link]
+        while stack:
+            parent = stack.pop()
+            parent_T = poses[parent]
+            for j in children.get(parent, []):
+                # origin transform
+                T_origin = T_from_rpy_xyz(j.origin.rpy, j.origin.xyz)
+                # joint motion (θ or d)
+                T_motion = np.eye(4)
+                if j.type in ('revolute', 'continuous'):
+                    angle = q.get(j.name, 0.0)
+                    axis = np.array(j.axis, dtype=float)
+                    Rj = tf.transformations.rotation_matrix(angle, axis)[:3, :3]
+                    T_motion[:3, :3] = Rj
+                elif j.type == 'prismatic':
+                    disp = q.get(j.name, 0.0)
+                    axis = np.array(j.axis, dtype=float)
+                    T_motion[:3, 3] = axis * disp
+                # fixed or other -> identity
+
+                child_T = parent_T @ T_origin @ T_motion
+                poses[j.child] = child_T
+                stack.append(j.child)
+        return poses
+
+    # def simplify_robot_mesh(self):
+    #     meshes = []
+
+    #     # Try TF once to decide if it’s available
+    #     use_tf = False
+    #     try:
+    #         tf.TransformListener().getLatestCommonTime('/mm_base', self.robot.get_root())
+    #         use_tf = True
+    #     except Exception:
+    #         use_tf = False
+
+    #     link_T = {}
+    #     if not use_tf:
+    #         link_T = self.compute_link_poses_from_urdf(joint_positions=None, base_link=self.base_link)
+
+    #     listener = tf.TransformListener() if use_tf else None
+
+    #     for link in self.robot.links:
+    #         # if link.name == self.robot.get_root():
+    #         #     continue
+
+    #         # Base transform for this link (either TF or URDF-only)
+    #         if use_tf:
+    #             try:
+    #                 (trans, rot) = listener.lookupTransform('/mm_base', link.name, rospy.Time(0))
+    #                 T_link = np.eye(4)
+    #                 T_link[:3, :3] = tf.transformations.quaternion_matrix(rot)[:3, :3]
+    #                 T_link[:3, 3] = np.array(trans)
+    #             except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
+    #                 continue
+    #         else:
+    #             if link.name not in link_T:
+    #                 continue
+    #             T_link = link_T[link.name]
+
+    #         # Each link can have multiple visuals
+    #         for visual in link.visuals or []:
+    #             mesh = self.load_mesh_from_geometry(visual.geometry)
+    #             if mesh is None or len(mesh.vertices) == 0:
+    #                 continue
+
+    #             # visual origin in the link frame
+    #             T_vis = np.eye(4)
+    #             if visual.origin is not None:
+    #                 Rv = tf.transformations.euler_matrix(*visual.origin.rpy)[:3, :3]
+    #                 T_vis[:3, :3] = Rv
+    #                 T_vis[:3, 3] = np.array(visual.origin.xyz)
+
+    #             # world pose of this visual
+    #             T_world = T_link @ T_vis
+
+    #             # save OG mesh (untransformed) and transformed simplified mesh
+    #             self.og_mesh_dict[link.name] = deepcopy(mesh).simplify_vertex_clustering(0.05)
+
+    #             mesh = deepcopy(mesh)
+    #             mesh.transform(T_world)
+    #             self.robot_bbs[link.name] = mesh.get_minimal_oriented_bounding_box()
+    #             self.robot_mesh_dict[link.name] = mesh.simplify_vertex_clustering(0.05)
+    #             meshes.append(mesh)
+
+    #     if meshes:
+    #         combined = o3d.geometry.TriangleMesh.create_from_oriented_bounding_box(
+    #             meshes[0].get_minimal_oriented_bounding_box()
+    #         )
+    #         for mesh in meshes[1:]:
+    #             combined += o3d.geometry.TriangleMesh.create_from_oriented_bounding_box(
+    #                 mesh.get_minimal_oriented_bounding_box()
+    #             )
+    #         return combined
+
+    #     rospy.logerr("Could not simplify robot mesh!")
+    #     return None
+
+    def simplify_robot_mesh(self):
+        """
+        Builds a simplified Open3D mesh of the robot by composing:
+        T_world_visual = T_world_link @ T_visual_origin @ S_mesh
+        Also caches transforms for reuse:
+        self.link_world_T[link]      -> 4x4
+        self.visual_origin_T[link]   -> [4x4, ...]
+        self.visual_world_T[link]    -> [4x4, ...]   (no scale applied)
+        """
+
+        meshes = []
+
+        # Decide whether TF is available
+        use_tf = False
+        try:
+            tf.TransformListener().getLatestCommonTime('/base_link', self.robot.get_root())
+            use_tf = True
+        except Exception:
+            use_tf = False
+
+        link_T_from_urdf = {}
+        if not use_tf:
+            # Expect this to return a dict: {link_name: 4x4}
+            link_T_from_urdf = self.compute_link_poses_from_urdf(
+                joint_positions=None, base_link=self.base_link
+            )
+
+        listener = tf.TransformListener() if use_tf else None
+
+        for link in self.robot.links:
+            if self.only_body_mesh and link.name in self.not_body:
+                continue
+
+            # --------- Link world pose (from TF or URDF FK) ----------
+            if use_tf:
+                try:
+                    trans, rot = listener.lookupTransform('/base_link', link.name, rospy.Time(0))
+                except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
+                    continue
+                T_link = np.eye(4)
+                T_link[:3, :3] = tf.transformations.quaternion_matrix(rot)[:3, :3]
+                T_link[:3, 3] = np.array(trans)
+            else:
+                if link.name not in link_T_from_urdf:
+                    continue
+                T_link = link_T_from_urdf[link.name]
+
+            self.link_world_T[link.name] = T_link
+
+            # --------- Visuals for this link ----------
+            visuals = getattr(link, 'visuals', None) or []
+            self.visual_origin_T[link.name] = []
+            self.visual_world_T[link.name] = []
+
+            for v_idx, visual in enumerate(visuals):
+                mesh = self.load_mesh_from_geometry(visual.geometry)
+                if mesh is None or len(mesh.vertices) == 0:
+                    continue
+
+                # Visual origin (URDF): roll-pitch-yaw in X-Y-Z order, and xyz
+                T_vis = np.eye(4)
+                if getattr(visual, 'origin', None) is not None:
+                    rpy = getattr(visual.origin, 'rpy', [0.0, 0.0, 0.0]) or [0.0, 0.0, 0.0]
+                    xyz = getattr(visual.origin, 'xyz', [0.0, 0.0, 0.0]) or [0.0, 0.0, 0.0]
+                    # tf.transformations uses fixed-axes X-Y-Z by default
+                    T_vis[:3, :3] = tf.transformations.euler_matrix(rpy[0], rpy[1], rpy[2])[:3, :3]
+                    T_vis[:3, 3] = np.array(xyz, dtype=float)
+
+                # Mesh scale (uniform or 3-vector)
+                scale_attr = getattr(visual.geometry, 'scale', None)
+                S = scale_matrix(scale_attr)
+
+                # Cache per-visual transforms (without scale for T_world_vis)
+                T_world_vis = T_link @ T_vis
+                self.visual_origin_T[link.name].append(T_vis)
+                self.visual_world_T[link.name].append(T_world_vis)
+
+                # Compose full transform for the mesh
+                T_total = T_world_vis @ S
+
+                # Save original simplified (in local coords) and transformed simplified (in world)
+                self.og_mesh_dict[link.name] = deepcopy(mesh).simplify_vertex_clustering(0.05)
+
+                mesh_w = deepcopy(mesh)
+                mesh_w.transform(T_total)
+                self.robot_bbs[link.name] = mesh_w.get_minimal_oriented_bounding_box()
+                self.robot_mesh_dict[link.name] = mesh_w.simplify_vertex_clustering(0.05)
+                meshes.append(mesh_w)
+
+        if not meshes:
+            rospy.logerr("Could not simplify robot mesh!")
+            return None
+
+        # Union of OBB shells (fast coarse proxy)
+        combined = o3d.geometry.TriangleMesh.create_from_oriented_bounding_box(
+            meshes[0].get_minimal_oriented_bounding_box()
+        )
+        for mesh in meshes[1:]:
+            combined += o3d.geometry.TriangleMesh.create_from_oriented_bounding_box(
+                mesh.get_minimal_oriented_bounding_box()
+            )
+        return combined
+
+
+    # def update_robot_arm_bbs(self, configuration, move_base = True, local_frame = True):
+    #     # calculate bbs for a certain joint configuration and base_position, if in world frame
+    #     # i'm going to try with the bb but i might need to do this on the mesh
+    #     # if bbs is None:
+    #     #     bbs = self.robot_bbs
+    #     # new_bbs = (deepcopy(bbs))
+    #     new_mesh = (deepcopy(self.robot_mesh_dict))
+    #     og_meshes = deepcopy(self.og_mesh_dict)
+
+    #     # move whole robot to global frame if move_base is true
+    #     # if move_base:
+    #     #     pose_array = np.array([configuration['x'], configuration['y'], configuration['z'], configuration['roll'], configuration['pitch'], configuration['yaw']])
+    #     #     new_bbs = self.transform_whole_robot(new_bbs, pose_array)
+
+    #     # #apply forward kinematics to obtain positions of joints
+    #     # if not local_frame:
+    #     #     self.robot_kinematics.set_robot_pose(x=configuration['x'], y=configuration['y'], z=configuration['z'], roll=configuration['roll'], pitch=configuration['pitch'], yaw=configuration['yaw'])
+
+    #     if not local_frame:
+    #         # get matrix to converto robot frame to local frame
+    #         robot_to_world = self.robot_kinematics.create_transformation_matrix(configuration['x'], configuration['y'], configuration['z'], configuration['roll'], configuration['pitch'], configuration['yaw'])
+
+    #     joint_angles_array = []
+    #     for key in configuration.keys():
+    #         if key.startswith('q'):
+    #             joint_angles_array.append(configuration[key])
+    #     if self.robot_kinematics.dof>0:
+    #         self.robot_kinematics.set_joint_angles(joint_angles_array)
+    #         fk_results = self.robot_kinematics.forward_kinematics(joint_angles_array)
+
+    #     for joint in new_mesh.keys():
+    #         #if joint is part of the configured movable joints, then move it
+    #         # if joint.replace('mani_','joint') in self.robot_joints and self.robot_kinematics.dof>0:
+    #         if joint in self.not_body and self.robot_kinematics.dof>0:
+    #             # transformation_fk = fk_results[joint]
+    #             transformation_fk = np.squeeze(fk_results[joint].cpu().get_matrix().numpy(),axis=0)
+    #             if not local_frame:
+    #                 transformation_fk = np.dot(robot_to_world, transformation_fk)
+
+    #             #trans and rot from joint to base_link: get from forward kinematics
+    #             mesh = og_meshes[joint]
+    #             mesh.transform(transformation_fk)
+    #             new_mesh[joint] = mesh
+
+    #         elif move_base and not local_frame and joint not in self.whitelist_joints_connections.keys():
+    #             mesh = new_mesh[joint]
+    #             mesh.transform(robot_to_world)
+    #             new_mesh[joint] = mesh
+    #         elif joint in self.whitelist_joints_connections.keys() and self.robot_kinematics.dof>0:
+    #             parent_joint, extra_joints, manual_transform = self.whitelist_joints_connections[joint]
+    #             manual_transform = np.array(manual_transform)
+
+    #             # try to force move all manually added joints to a parent joint
+    #             # transformation_fk = fk_results[parent_joint]
+    #             transformation_fk = np.squeeze(fk_results[parent_joint].cpu().get_matrix().numpy(),axis=0)
+    #             if len(extra_joints) >0:
+    #                 extra_transform = np.squeeze(fk_results[extra_joints[0]].cpu().get_matrix().numpy(),axis=0)
+    #                 # extra_transform =fk_results[extra_joints[0]]
+    #             else:
+    #                 extra_transform = np.eye(4)
+    #             #TODO: THEN MAKE THIS GENERAL FOR SEVERAL EXTRA JOINTS
+    #             if not local_frame:
+    #                 transformation_fk = np.dot(robot_to_world, transformation_fk, extra_transform)
+    #                 transformation_fk = np.dot(transformation_fk, manual_transform)
+    #             else:
+    #                 transformation_fk = np.dot(transformation_fk, extra_transform, manual_transform)
+
+    #             new_mesh[joint] = og_meshes[joint].transform(transformation_fk)
+    #     return new_mesh
+    #         # for example, for the head we will have to make it connected to the torso and update it as well. maybe use whitelist for that
+
+    def update_robot_arm_bbs(self, configuration, move_base=True, local_frame=True, part=None):
+        """
+        Recompute meshes in the requested configuration, honoring per-visual origins and scales.
+
+        Uses caches populated by simplify_robot_mesh():
+        self.link_world_T[link]
+        self.visual_origin_T[link]   -> list of 4x4 (one per visual)
+        self.og_mesh_dict[link]      -> TriangleMesh OR list[TriangleMesh] (one per visual)
+        """
+        # Start fresh from the original (local) meshes; we’ll rebuild world meshes below.
+        new_mesh = {}
         og_meshes = deepcopy(self.og_mesh_dict)
 
-        # move whole robot to global frame if move_base is true
-        # if move_base:
-        #     pose_array = np.array([configuration['x'], configuration['y'], configuration['z'], configuration['roll'], configuration['pitch'], configuration['yaw']])
-        #     new_bbs = self.transform_whole_robot(new_bbs, pose_array)
-
-        # #apply forward kinematics to obtain positions of joints
-        # if not local_frame:
-        #     self.robot_kinematics.set_robot_pose(x=configuration['x'], y=configuration['y'], z=configuration['z'], roll=configuration['roll'], pitch=configuration['pitch'], yaw=configuration['yaw'])
-
+        # Optional base pose (world) transform
         if not local_frame:
-            # get matrix to converto robot frame to local frame
-            robot_to_world = self.robot_kinematics.create_transformation_matrix(configuration['x'], configuration['y'], configuration['z'], configuration['roll'], configuration['pitch'], configuration['yaw'])
+            robot_to_world = self.robot_kinematics.create_transformation_matrix(
+                configuration.get('x', 0.0),
+                configuration.get('y', 0.0),
+                configuration.get('z', 0.0),
+                configuration.get('roll', 0.0),
+                configuration.get('pitch', 0.0),
+                configuration.get('yaw', 0.0)
+            )
 
-        joint_angles_array = []
-        for key in configuration.keys():
-            if key.startswith('q'):
-                joint_angles_array.append(configuration[key])
-        if self.robot_kinematics.dof>0:
+        # FK for the requested joint angles
+        joint_angles_array = [configuration[k] for k in sorted(configuration.keys()) if k.startswith('q')]
+        fk_results = {}
+        if getattr(self.robot_kinematics, 'dof', 0) > 0 and len(joint_angles_array) > 0:
             self.robot_kinematics.set_joint_angles(joint_angles_array)
-            fk_results = self.robot_kinematics.forward_kinematics(joint_angles_array)
+            fk_results = self.robot_kinematics.forward_kinematics(joint_angles_array)  # dict: link_name -> transform obj
 
-        for joint in new_mesh.keys():
-            #if joint is part of the configured movable joints, then move it
+        # Helper: get link FK (4x4) if available; else identity
+        def _fk_T(link_name):
+            if link_name in fk_results:
+                T = np.squeeze(fk_results[link_name].cpu().get_matrix().numpy(), axis=0)
+            else:
+                T = np.eye(4)
+            if not local_frame:
+                T = robot_to_world @ T
+            return T
 
-            if joint.replace('link','joint') in self.robot_joints and self.robot_kinematics.dof>0:
-                # transformation_fk = fk_results[joint]
-                transformation_fk = np.squeeze(fk_results[joint].cpu().get_matrix().numpy(),axis=0)
-                if not local_frame:
-                    transformation_fk = np.dot(robot_to_world, transformation_fk)
+        # Walk every link we have an original mesh for
+        for link_name, og in og_meshes.items():
+            # Decide the base transform for this link in the current config
+            if link_name in fk_results:
+                T_link = _fk_T(link_name)
+            elif move_base and not local_frame and (link_name not in getattr(self, 'whitelist_joints_connections', {})):
+                # Rigidly move non-manipulator bits with the base pose
+                T_link = robot_to_world
+            else:
+                T_link = np.eye(4)
 
-                #trans and rot from joint to base_link: get from forward kinematics
-                mesh = og_meshes[joint]
-                mesh.transform(transformation_fk)
-                new_mesh[joint] = mesh
+            # If this link is “manually attached” to some other joint, honor that
+            if (hasattr(self, 'whitelist_joints_connections')
+                and link_name in self.whitelist_joints_connections
+                and getattr(self.robot_kinematics, 'dof', 0) > 0):
+                parent_joint, extra_joints, manual_transform = self.whitelist_joints_connections[link_name]
+                T_parent = _fk_T(parent_joint)
+                T_extra  = _fk_T(extra_joints[0]) if (isinstance(extra_joints, (list, tuple)) and len(extra_joints) > 0) else np.eye(4)
+                T_manual = np.array(manual_transform, dtype=float)
+                T_link = T_parent @ T_extra @ T_manual  # already has robot_to_world if !local_frame via _fk_T
 
-            elif move_base and not local_frame and joint not in self.whitelist_joints_connections.keys():
-                mesh = new_mesh[joint]
-                mesh.transform(robot_to_world)
-                new_mesh[joint] = mesh
-            elif joint in self.whitelist_joints_connections.keys() and self.robot_kinematics.dof>0:
-                parent_joint, extra_joints, manual_transform = self.whitelist_joints_connections[joint]
-                manual_transform = np.array(manual_transform)
+            # Visual origins & scales for this link
+            T_vis_list = self.visual_origin_T.get(link_name, []) or [np.eye(4)]
 
-                # try to force move all manually added joints to a parent joint
-                # transformation_fk = fk_results[parent_joint]
-                transformation_fk = np.squeeze(fk_results[parent_joint].cpu().get_matrix().numpy(),axis=0)
-                if len(extra_joints) >0:
-                    extra_transform = np.squeeze(fk_results[extra_joints[0]].cpu().get_matrix().numpy(),axis=0)
-                    # extra_transform =fk_results[extra_joints[0]]
-                else:
-                    extra_transform = np.eye(4)
-                #TODO: THEN MAKE THIS GENERAL FOR SEVERAL EXTRA JOINTS
-                if not local_frame:
-                    transformation_fk = np.dot(robot_to_world, transformation_fk, extra_transform)
-                    transformation_fk = np.dot(transformation_fk, manual_transform)
-                else:
-                    transformation_fk = np.dot(transformation_fk, extra_transform, manual_transform)
+            # Support one or multiple visuals per link
+            # - If 'og' is a list, assume it matches the count/order of T_vis_list/scale_list.
+            # - If 'og' is a single mesh, apply the first visual (common case).
+            if isinstance(og, list):
+                combined = None
+                for i, og_mesh in enumerate(og):
+                    T_vis = T_vis_list[i] if i < len(T_vis_list) else np.eye(4)
+                    T_total = T_link @ T_vis
 
-                new_mesh[joint] = og_meshes[joint].transform(transformation_fk)
+                    m = deepcopy(og_mesh)
+                    m.transform(T_total)
+                    if combined is None:
+                        combined = m
+                    else:
+                        combined += m
+                if combined is not None:
+                    new_mesh[link_name] = combined
+            else:
+                T_vis = T_vis_list[0]
+                T_total = T_link @ T_vis
+
+                m = deepcopy(og)
+                m.transform(T_total)
+                if part == 'body' and link_name in self.body:
+                    new_mesh[link_name] = m
+                if part == 'arm' and link_name in self.not_body:
+                    new_mesh[link_name] = m
+                if part != 'body' and part != 'arm':
+                    new_mesh[link_name] = m
+
         return new_mesh
             # for example, for the head we will have to make it connected to the torso and update it as well. maybe use whitelist for that
 
