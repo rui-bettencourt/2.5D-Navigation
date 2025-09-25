@@ -32,7 +32,7 @@ class RobotKinematics:
         self.pitch = pitch
         self.joints_limits = {}
         ############## CONFIG #################################################################
-        urdf_file = '/home/rui/socrob_ws/src/isr_tiago/simulation/mbot_simulation_environments/robots/tiago_ouster.urdf'
+        urdf_file = '/home/rods/tiago_ws/src/full_body_nav/urdf/tiago_unitree.urdf'
         ee_link = "arm_7_link"
         self.dof = 7
         dtype = torch.float64
@@ -54,7 +54,7 @@ class RobotKinematics:
         # save joints limits to json file
         # Convert all NumPy arrays and floats to Python lists and floats
         json_joints_limits = {key: list(map(float, value)) for key, value in self.joints_limits.items()}
-        with open("/home/rui/pcl_ws/src/mesh_nav/data/joints_limits.json", "w") as file:
+        with open("/home/rods/tiago_ws/src/2.5D-Navigation/data/joints_limits.json", "w") as file:
                 json.dump(json_joints_limits, file, indent=4)
 
         # Create all joints chains
