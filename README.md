@@ -1,6 +1,6 @@
-# mesh_nav
+# full_body_global_planner
 
-`mesh_nav` is a ROS package for navigation on 3D mesh environments. It provides tools for path planning and robot kinematics using mesh representations, enabling robots to traverse complex terrains.
+`full_body_global_planner` is a ROS package for navigation on 3D mesh environments. It provides tools for path planning and robot kinematics using mesh representations, enabling robots to traverse complex terrains.
 
 ## Features
 
@@ -23,7 +23,7 @@
     You also need:
     ROS Humble
 
-    pinocchio (https://github.com/stack-of-tasks/pinocchio?tab=readme-ov-file#installation) COMPILE USING RELEASE TO BE FAST!!!: using ros: catkin config --cmake-args -DCMAKE_BUILD_TYPE=Release
+    pinocchio (https://github.com/stack-of-tasks/pinocchio?tab=readme-ov-file#installation). For best performance, build in Release mode.
     ```bash
     sudo apt-get install ros-$ROS_DISTRO-kdl-parser
     pip install ikpy pykdl
@@ -38,7 +38,7 @@
 3. Build the workspace:
     ```bash
     cd ~/(your_workspace)
-    colcon build --packages-select mesh_nav
+    colcon build --packages-select full_body_global_planner
     source install/setup.bash
     ```
 
@@ -58,6 +58,6 @@ Pull requests are welcome. For major changes, please open an issue first to disc
 
 If your robot only has a xacro file, you need to convert your robot's xacro file to URDF:
     ```bash
-    rosrun xacro xacro /path/to/your/robot_description.urdf.xacro -o /path/to/expanded_robot_description.urdf
+    ros2 run xacro xacro /path/to/your/robot_description.urdf.xacro -o /path/to/expanded_robot_description.urdf
     ```
     Remove unnecessary links and joints from the URDF. Then use this urdf so pinocchio can perform forward kinematics.

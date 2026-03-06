@@ -4,5 +4,7 @@ octomap-python=1.8.0
 ros noetic
 numpy
 
+Compile Decomp_Utils: mkdir build && cd build && cmake .. && make
+
 FOR CPP:
-pinocchio (https://github.com/stack-of-tasks/pinocchio?tab=readme-ov-file#installation) COMPILE USING RELEASE TO BE FAST!!!: using ros: catkin config --cmake-args -DCMAKE_BUILD_TYPE=Release
+pinocchio (https://github.com/stack-of-tasks/pinocchio?tab=readme-ov-file#installation) COMPILE USING RELEASE TO BE FAST!!!

@@ -1,10 +1,11 @@
 #!/usr/bin/env python
 # import ros and other libraries
-import rospy
+import logging
 import random
 import numpy as np
 import time
 import json
+import rclpy
 
 import open3d as o3d
 import matplotlib.pyplot as plt
@@ -37,7 +38,7 @@ try:
     from elastic_band_planner_cpp import ElasticBandPlanner as ElasticBandPlannerCPP
     _HAS_CPP_EBAND = True
 except Exception as e:
-    rospy.logwarn("Could not import C++ ElasticBandPlanner binding: %s", e)
+    logging.getLogger(__name__).warning("Could not import C++ ElasticBandPlanner binding: %s", e)
     _HAS_CPP_EBAND = False
 
 
@@ -75,12 +76,14 @@ center_activation_safety = 0.8
 class MeshNav(object):
     def __init__(self):
         # begin node
-        rospy.init_node('mesh_nav', anonymous=True)
+        if not rclpy.ok():
+            rclpy.init(args=None)
+        self.node = rclpy.create_node('mesh_nav')
 
         # variables
         # self.path = '/home/rui/ds/testscilindros/hard/'
         self.path = '/home/rui/ds/testsiros2025/'  # path for files, change this to save in the package
-        self.rate = rospy.Rate(10)  # TODO: make this an argument of launch file
+        self.rate = self.node.create_rate(10)  # TODO: make this an argument of launch file
 
         # create classes needed for navigation
         self.robot_kinematics = RobotKinematics(manipulator)
@@ -135,7 +138,7 @@ class MeshNav(object):
                 self.EBAND_CPP.set_safe_config(safe_config, num_joints=NUM_JOINTS)
                 self.EBAND_CPP.set_dynamic_safety(True, center_activation_safety=center_activation_safety)
             except Exception as e:
-                rospy.logwarn("Failed to initialize C++ ElasticBandPlanner: %s", e)
+                self.node.get_logger().warning("Failed to initialize C++ ElasticBandPlanner: %s" % e)
                 self.EBAND_CPP = None
 
         self.joint_names = [
@@ -151,7 +154,7 @@ class MeshNav(object):
         execution_times = []
         print("Read obstacles!")
 
-        while not rospy.is_shutdown() and number_of_attempts > 0:
+        while rclpy.ok() and number_of_attempts > 0:
             # test path planning with random start and end
             start_coord = [start['x'], start['y'], start['z'], start['yaw']]
             end_coord = [goal['x'], goal['y'], goal['yaw']]
@@ -178,7 +181,7 @@ class MeshNav(object):
                         path, obstacle_mesh, self.RM, 200, convergence_threshold=2e-2
                     )
             except Exception as e:
-                rospy.logwarn("update_path failed (%s). Falling back to original path.", e)
+                self.node.get_logger().warning("update_path failed (%s). Falling back to original path." % e)
                 new_path = path
             end_time = time.time()
             print("Execution time:", end_time - start_time)
@@ -197,6 +200,12 @@ class MeshNav(object):
               " | std : ", np.std(execution_times),
               " | min: ", np.min(execution_times),
               " | max: ", np.max(execution_times))
+
+    def shutdown(self):
+        if hasattr(self, 'node'):
+            self.node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
 
     def plot_path_3d(self, path, obstacle_mesh):
         all_bbs = []
@@ -265,5 +274,8 @@ def generate_colorbar(obstacle_threshold=obstacle_threshold, padding=0.5, cmap='
 
 if __name__ == '__main__':
     mn = MeshNav()
-    mn.run()
-    obstacle_mesh = mn.import_obstacles()
+    try:
+        mn.run()
+        obstacle_mesh = mn.import_obstacles()
+    finally:
+        mn.shutdown()

@@ -1,12 +1,11 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
-from distutils.core import setup
-from catkin_pkg.python_setup import generate_distutils_setup
+from setuptools import find_packages, setup
 
-# for your packages to be recognized by python
-d = generate_distutils_setup(
- packages=['mesh_nav_ros'],
- package_dir={'mesh_nav_ros': 'src/mesh_nav_ros'}
+setup(
+	name='full_body_global_planner_ros',
+	version='0.0.0',
+	packages=find_packages(where='src'),
+	package_dir={'': 'src'},
+	zip_safe=False,
 )
-
-setup(**d)

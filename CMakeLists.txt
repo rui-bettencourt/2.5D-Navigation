@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.5)
-project(mesh_nav)
+project(full_body_global_planner)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
@@ -7,6 +7,7 @@ endif()
 
 # Dependencies
 find_package(ament_cmake REQUIRED)
+find_package(ament_cmake_python REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(pinocchio REQUIRED)
@@ -38,35 +39,35 @@ option(LIBIGL_WITH_COMISO OFF)
 
 # Library for robot kinematics
 add_library(RobotKinematics
-  src/mesh_nav_ros/RobotKinematics.cpp
+  src/full_body_global_planner_ros/RobotKinematics.cpp
 )
 set_target_properties(RobotKinematics PROPERTIES POSITION_INDEPENDENT_CODE ON)
 ament_target_dependencies(RobotKinematics rclcpp std_msgs pinocchio)
 
 # Library for SDF from PLY
 add_library(SDFfromPLY
-  src/mesh_nav_ros/SDFfromPLY.cpp
+  src/full_body_global_planner_ros/SDFfromPLY.cpp
 )
 set_target_properties(SDFfromPLY PROPERTIES POSITION_INDEPENDENT_CODE ON)
 ament_target_dependencies(SDFfromPLY rclcpp std_msgs)
 
 # Library for voxel-based SDF
 add_library(VoxelSDF
-  src/mesh_nav_ros/VoxelSDF.cpp
+  src/full_body_global_planner_ros/VoxelSDF.cpp
 )
 set_target_properties(VoxelSDF PROPERTIES POSITION_INDEPENDENT_CODE ON)
 ament_target_dependencies(VoxelSDF rclcpp std_msgs)
 
 # Executable for SDF computing
 add_executable(SDFcomputing
-  src/mesh_nav_ros/SDFcomputing.cpp
+  src/full_body_global_planner_ros/SDFcomputing.cpp
 )
 ament_target_dependencies(SDFcomputing rclcpp std_msgs)
 target_link_libraries(SDFcomputing SDFfromPLY OpenMP::OpenMP_CXX)
 
 # Core planner library
 add_library(elastic_band_planner_core SHARED
-    src/mesh_nav_ros/ElasticBandPlanner.cpp
+  src/full_body_global_planner_ros/ElasticBandPlanner.cpp
 )
 if(OpenMP_CXX_FOUND)
   target_link_libraries(elastic_band_planner_core
@@ -112,6 +113,12 @@ install(TARGETS
 
 install(DIRECTORY include/
   DESTINATION include
+)
+
+ament_python_install_package(full_body_global_planner_ros PACKAGE_DIR src/full_body_global_planner_ros)
+
+install(DIRECTORY launch
+  DESTINATION share/${PROJECT_NAME}
 )
 
 # Debug options

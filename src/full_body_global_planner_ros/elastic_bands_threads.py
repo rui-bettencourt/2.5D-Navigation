@@ -8,10 +8,6 @@ from matplotlib.colors import Normalize
 from aux_functions import wrap_angle, create_bounding_box_corners
 from concurrent.futures import ThreadPoolExecutor
 
-# for testing
-import rospy
-from sensor_msgs.msg import JointState
-
 # Check if Open3D is compiled with CUDA support
 if o3d.core.cuda.is_available():
     print("Open3D is using GPU (CUDA is available).")

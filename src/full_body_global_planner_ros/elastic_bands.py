@@ -14,7 +14,7 @@ from tests.construct_ikpy_chains import create_ikpy_chain_from_urdf
 # import ikpy
 from ikpy.chain import Chain
 from ikpy.link import OriginLink, URDFLink
-import rospy
+import rclpy
 from sensor_msgs.msg import JointState
 
 ###### variables
@@ -748,7 +748,8 @@ class ElasticBandPlanner:
 
 # Example usage of ElasticBandPlanner with a robot and environment
 if __name__ == '__main__':
-    rospy.init_node('elastic_band_planner_node')
+    rclpy.init(args=None)
+    node = rclpy.create_node('elastic_band_planner_node')
 
     def joint_states_callback(msg):
             # Extract the first 7 joint positions
@@ -770,8 +771,10 @@ if __name__ == '__main__':
     # angles = ep.robot.compute_inverse_kinematics(-0.15,0.1,0.63, chain='joint2')
     # print(angles)
     # Subscribe to the /joint_states topic
-    rospy.Subscriber('/joint_states', JointState, joint_states_callback)
-    rospy.sleep(2.0)
+    node.create_subscription(JointState, '/joint_states', joint_states_callback, 10)
+    end_wait_time = time.time() + 2.0
+    while rclpy.ok() and time.time() < end_wait_time:
+        rclpy.spin_once(node, timeout_sec=0.1)
     print(ep.robot.joints_angles)
     start_time = time.time()
     positions = ep.robot.get_arm_endpoints(local_frame=True)
@@ -780,4 +783,9 @@ if __name__ == '__main__':
     print(positions)
     
     # Spin the ROS node
-    rospy.spin()
+    try:
+        rclpy.spin(node)
+    finally:
+        node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()

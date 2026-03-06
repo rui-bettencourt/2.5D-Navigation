@@ -4,3 +4,6 @@
 [submodule "external/tinyply"]
 	path = external/tinyply
 	url = https://github.com/ddiakopoulos/tinyply.git
+[submodule "external/DecompROS2"]
+	path = external/DecompROS2
+	url = git@github.com:GPrathap/DecompROS2.git
