@@ -219,3 +219,6 @@ data/*.csv
 data/.~lock.planning_times_goalb25.csv#
 data/collision_configurations.txt
 .vscode/launch.json
+external/DecompROS2/DecompUtil/build_ros2/
+external/DecompROS2/decomp_test_node/.vscode/
+*/.vscode
