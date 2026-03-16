@@ -4,18 +4,45 @@ import json
 import os, sys
 
 # import other created files
-from mesh_nav_ros.graph_functions import GraphManager
-from mesh_nav_ros.aux_functions import interpolate_path, sample_path, calculate_path_distance, apply_safety_configuration_to_path
+try:
+    from full_body_global_planner_ros.graph_functions import GraphManager
+    from full_body_global_planner_ros.aux_functions import (
+        interpolate_path,
+        sample_path,
+        calculate_path_distance,
+        apply_safety_configuration_to_path,
+    )
+except ImportError:
+    try:
+        from mesh_nav_ros.graph_functions import GraphManager
+        from mesh_nav_ros.aux_functions import (
+            interpolate_path,
+            sample_path,
+            calculate_path_distance,
+            apply_safety_configuration_to_path,
+        )
+    except ImportError:
+        from graph_functions import GraphManager
+        from aux_functions import (
+            interpolate_path,
+            sample_path,
+            calculate_path_distance,
+            apply_safety_configuration_to_path,
+        )
 
-# NEW: C++ elastic band planner binding (pybind11)
-ws = os.path.abspath(os.path.dirname(__file__))
-print(ws)
+# C++ elastic band planner binding (pybind11)
+module_dir = os.path.abspath(os.path.dirname(__file__))
+ws = module_dir
 for _ in range(10):  # walk up a few levels
-    cand = os.path.join(ws, 'build', 'mesh_nav')
-    if os.path.isdir(cand):
-        if cand not in sys.path:
+    candidates = [
+        os.path.join(ws, 'build', 'full_body_global_planner'),
+        os.path.join(ws, 'build', 'mesh_nav'),
+        os.path.join(ws, 'install', 'full_body_global_planner', 'lib', 'full_body_global_planner'),
+    ]
+    for cand in candidates:
+        if os.path.isdir(cand) and cand not in sys.path:
             sys.path.append(cand)
-        break
+
     parent = os.path.dirname(ws)
     if parent == ws:
         break
@@ -24,14 +51,13 @@ try:
     from elastic_band_planner_cpp import ElasticBandPlanner as ElasticBandPlannerCPP
     _HAS_CPP_EBAND = True
 except Exception as e:
-    print("Could not import C++ ElasticBandPlanner binding: %s", e)
+    print(f"Could not import C++ ElasticBandPlanner binding: {e}")
     _HAS_CPP_EBAND = False
 
 class MeshNav(object):
     def __init__(self, config_path=None):
         if config_path is None:
-            print("A config path is required.")
-            exit()
+            raise ValueError("A config path is required.")
         else:
             # load JSON
             with open(config_path, "r") as f:
@@ -41,40 +67,43 @@ class MeshNav(object):
             for key, value in cfg.items():
                 setattr(self, key, value)
 
-        self.Graph = GraphManager(self.path + self.traversablegraphfilename)
+        self.path = os.path.normpath(self.path)
 
-        if _HAS_CPP_EBAND:
-            try:
-                self.EBAND_CPP = ElasticBandPlannerCPP(
-                    k_attraction_base=self.k_attraction_base,
-                    k_repulsion_base=self.k_repulsion_base,
-                    k_attraction_joints=self.k_attraction_joints,
-                    k_repulsion_joints=self.k_repulsion_joints,
-                    k_repulsion_robot_joints=self.k_repulsion_robot_joints,
-                    k_update_joints=self.k_update_joints,
-                    k_orientation=self.k_orientation,
-                    k_orientation_from_base=self.k_orientation_from_base,
-                    k_position_from_orientation=0.0,
-                    k_safety_joints=self.k_safety_joints,
-                    obstacle_threshold=self.obstacle_threshold,
-                )
+        def _p(*parts):
+            return os.path.join(*parts)
 
-                # Initialize with your SDF/voxel file
-                sdf_bin_path = self.path + self.environmentsdffilename  # <-- adjust as needed
-                robot_sdf_bin_path = self.path + self.robotsdffilename
-                self.EBAND_CPP.setRobotUrdfPath(self.roboturdffilename)
-                self.EBAND_CPP.setRobotBasePoints(self.robot_points_base)
-                self.EBAND_CPP.setJointNames(self.joints_names, self.path+self.joint_limits_path)
-                self.EBAND_CPP.initialize(sdf_bin_path, robot_sdf_bin_path)
-                self.EBAND_CPP.setRepulsiveJointIndices(self.repulsive_joints)
-                self.EBAND_CPP.set_safe_config(self.safe_config, num_joints=self.dof)
-                self.EBAND_CPP.set_dynamic_safety(True, center_activation_safety=self.center_activation_safety)
-            except Exception as e:
-                print("Failed to initialize C++ ElasticBandPlanner: %s", e)
-                exit()
-        else:
-            print("CPP Library not found")
-            exit()
+        self.Graph = GraphManager(_p(self.path, self.traversablegraphfilename))
+
+        if not _HAS_CPP_EBAND:
+            raise RuntimeError(
+                "C++ ElasticBandPlanner binding not found (elastic_band_planner_cpp). "
+                "Build full_body_global_planner and ensure its build/install binding path is on PYTHONPATH."
+            )
+
+        self.EBAND_CPP = ElasticBandPlannerCPP(
+            k_attraction_base=self.k_attraction_base,
+            k_repulsion_base=self.k_repulsion_base,
+            k_attraction_joints=self.k_attraction_joints,
+            k_repulsion_joints=self.k_repulsion_joints,
+            k_repulsion_robot_joints=self.k_repulsion_robot_joints,
+            k_update_joints=self.k_update_joints,
+            k_orientation=self.k_orientation,
+            k_orientation_from_base=self.k_orientation_from_base,
+            k_position_from_orientation=0.0,
+            k_safety_joints=self.k_safety_joints,
+            obstacle_threshold=self.obstacle_threshold,
+        )
+
+        # Initialize with your SDF/voxel file
+        sdf_bin_path = _p(self.path, self.environmentsdffilename)
+        robot_sdf_bin_path = _p(self.path, self.robotsdffilename)
+        self.EBAND_CPP.setRobotUrdfPath(self.roboturdffilename)
+        self.EBAND_CPP.setRobotBasePoints(self.robot_points_base)
+        self.EBAND_CPP.setJointNames(self.joints_names, _p(self.path, self.joint_limits_path))
+        self.EBAND_CPP.initialize(sdf_bin_path, robot_sdf_bin_path)
+        self.EBAND_CPP.setRepulsiveJointIndices(self.repulsive_joints)
+        self.EBAND_CPP.set_safe_config(self.safe_config, num_joints=self.dof)
+        self.EBAND_CPP.set_dynamic_safety(True, center_activation_safety=self.center_activation_safety)
 
     def plan(self, start, goal):
         start_z = start['z'] if 'z' in start else 0.0
@@ -91,11 +120,7 @@ class MeshNav(object):
 
         path = interpolate_path(path, start, goal, self.dof)
 
-        try:
-            return  self.EBAND_CPP.update_path(path, self.max_iterations, self.convergence_distance, num_joints=self.dof)
-        except Exception as e:
-            print("update_path failed (%s). Falling back to original path.", e)
-            return apply_safety_configuration_to_path(path, self.safe_config, self.dof)
+        return self.EBAND_CPP.update_path(path, self.max_iterations, self.convergence_distance, num_joints=self.dof)
 
 if __name__ == '__main__':
     mn = MeshNav('/home/rui/mesh_nav_ws/src/mesh_nav/config/tiago.json')

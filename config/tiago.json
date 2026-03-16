@@ -1,5 +1,5 @@
 {
-  "path": "/home/rods/tiago_ws/src/mesh_nav/data/",
+  "path": "/home/dolores/tiago_ws/src/full_body_nav_mpc/submodules/2.5D-Navigation/data",
   "k_attraction_base": 0.005,
   "k_repulsion_base": 0.00002,
   "k_attraction_joints": 0.2,
@@ -20,7 +20,7 @@
   "traversablegraphfilename": "traversablegroundgraph.pkl",
   "environmentsdffilename": "sdf.bin",
   "robotsdffilename": "robot_sdf_002.bin",
-  "roboturdffilename": "/home/rods/tiago_ws/src/full_body_nav/urdf/tiago.urdf",
+  "roboturdffilename": "/home/dolores/ros2_ws/src/full_body_nav_rl/urdf/tiago.urdf",
   "joint_limits_path": "joints_limits.json",
   "joints_names": ["arm_1_joint","arm_2_joint","arm_3_joint","arm_4_joint","arm_5_joint","arm_6_joint","arm_7_joint"],
   "repulsive_joints": [3, 6],
