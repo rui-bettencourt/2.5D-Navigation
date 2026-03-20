@@ -123,15 +123,15 @@ class MeshNav(object):
         return self.EBAND_CPP.update_path(path, self.max_iterations, self.convergence_distance, num_joints=self.dof)
 
 if __name__ == '__main__':
-    mn = MeshNav('/home/rui/mesh_nav_ws/src/mesh_nav/config/tiago.json')
+    mn = MeshNav('/home/dolores/tiago_ws/src/full_body_nav_mpc/submodules/2.5D-Navigation/config/tiago.json')
     print(mn.safe_config)
-    start = {'x': 0.0, 'y': 0.0, 'z': 0.0,
+    start = {'x': -1.87, 'y': -0.45, 'z': 0.0,
          'roll': 0.0, 'pitch': 0.0, 'yaw': 0.0,
          'q1': 0.0, 'q2': -0.05, 'q3': 0.0, 'q4': 0.02, 'q5': 0.0, 'q6': 0.0, 'q7': 0.0}
 
-    goal = {'x': 4.0, 'y': 0.0, 'z': 0.0,
+    goal = {'x': 0.0, 'y': 0.0, 'z': 0.0,
             'roll': 0.0, 'pitch': 0.0, 'yaw': 0.0,
-            'q1': 0.0, 'q2': -0.05, 'q3': 0.0, 'q4': 0.02, 'q5': 0.0, 'q6': 0.0, 'q7': 0.0}
+            'q1': 0.3, 'q2': 0.3, 'q3': 0.3, 'q4': 0.3, 'q5': 0.3, 'q6': 0.3, 'q7': 0.3}
     
     path = mn.plan(start,goal)
     print(path)

@@ -13,7 +13,7 @@
   "manipulator": true,
   "dof": 7,
   "center_activation_safety": 0.8,
-  "metersperwaypoint": 3.0,
+  "metersperwaypoint": 0.2,
   "max_iterations": 500,
   "convergence_distance": 0.02,
   "safe_config": { "q1": 0.72, "q2": -0.9, "q3": -0.88, "q4": 1.94, "q5": -1.2, "q6": 1.37, "q7": 0.0 },
