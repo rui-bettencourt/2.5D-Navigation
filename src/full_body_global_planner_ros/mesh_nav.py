@@ -103,7 +103,8 @@ class MeshNav(object):
         self.EBAND_CPP.initialize(sdf_bin_path, robot_sdf_bin_path)
         self.EBAND_CPP.setRepulsiveJointIndices(self.repulsive_joints)
         self.EBAND_CPP.set_safe_config(self.safe_config, num_joints=self.dof)
-        self.EBAND_CPP.set_dynamic_safety(True, center_activation_safety=self.center_activation_safety)
+        if self.k_safety_joints > 0.0:
+            self.EBAND_CPP.set_dynamic_safety(True, center_activation_safety=self.center_activation_safety)
 
     def plan(self, start, goal):
         start_z = start['z'] if 'z' in start else 0.0

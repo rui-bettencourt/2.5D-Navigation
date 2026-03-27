@@ -18,3 +18,13 @@ external/DecompROS2/DecompUtil/build_ros2/
 external/DecompROS2/decomp_test_node/.vscode/
 */.vscode
 **__pycache__
+data/applemap.pcd
+data/arm_home.ply
+data/joints_limits.json
+data/obstacles.ply
+data/robot_sdf_002.bin
+data/safe_configurations.txt
+data/sdf.bin
+data/sdf_testbed.bin
+data/traversablegroundgraph.pkl
+data/traversablegroundgraph_testbed.pkl
