@@ -108,24 +108,41 @@ class MeshNav(object):
 
     def plan(self, start, goal):
         start_z = start['z'] if 'z' in start else 0.0
+        goal_z = goal['z'] if 'z' in goal else start_z
         start_roll = start['roll'] if 'roll' in start else 0.0
         start_pitch = start['pitch'] if 'pitch' in start else 0.0
 
         start_coord = [start['x'], start['y'], start_z, start['yaw']]
-        end_coord = [goal['x'], goal['y'], goal['yaw']]
+        end_coord = [goal['x'], goal['y'], goal_z]
         
         path = self.Graph.plan(start_coord, end_coord)
-        number_waypoints = int(np.ceil(calculate_path_distance(path)/ self.metersperwaypoint))
+        if path is None or len(path) == 0:
+            raise RuntimeError("Graph planner returned an empty path")
+
+        # Keep at least two waypoints so downstream interpolation and terminal-yaw
+        # assignment remain valid, even when start and goal map to the same graph node.
+        path_distance = calculate_path_distance(path)
+        number_waypoints = max(2, int(np.ceil(path_distance / self.metersperwaypoint)) + 1)
         path = sample_path(path, number_waypoints)
+
+        if len(path) == 0:
+            raise RuntimeError("Path sampling produced no waypoints")
+
         path[-1]['yaw'] = goal['yaw']
 
         path = interpolate_path(path, start, goal, self.dof)
 
         return self.EBAND_CPP.update_path(path, self.max_iterations, self.convergence_distance, num_joints=self.dof)
 
+    def save_path(self, path, filepath):
+        """Save the planned path to a JSON file for visualization with plot_path.py."""
+        with open(filepath, 'w') as f:
+            json.dump(path, f, indent=2)
+        print(f"Path saved to: {filepath}")
+
 if __name__ == '__main__':
-    mn = MeshNav('/home/dolores/tiago_ws/src/full_body_nav_mpc/submodules/2.5D-Navigation/config/tiago.json')
-    print(mn.safe_config)
+    mn = MeshNav('/home/dolores/tiago_ws/src/full_body_nav_mpc/submodules/2.5D-Navigation/config/tiago_8floor.json')
+
     start = {'x': -1.87, 'y': -0.45, 'z': 0.0,
          'roll': 0.0, 'pitch': 0.0, 'yaw': 0.0,
          'q1': 0.0, 'q2': -0.05, 'q3': 0.0, 'q4': 0.02, 'q5': 0.0, 'q6': 0.0, 'q7': 0.0}
@@ -134,5 +151,10 @@ if __name__ == '__main__':
             'roll': 0.0, 'pitch': 0.0, 'yaw': 0.0,
             'q1': 0.3, 'q2': 0.3, 'q3': 0.3, 'q4': 0.3, 'q5': 0.3, 'q6': 0.3, 'q7': 0.3}
     
-    path = mn.plan(start,goal)
+    path = mn.plan(start, goal)
+    
+    # Save the path to JSON file for visualization with plot_path.py
+    output_path = '/home/dolores/tiago_ws/src/full_body_nav_mpc/submodules/2.5D-Navigation/data/planned_path.json'
+    mn.save_path(path, output_path)
+    
     print(path)

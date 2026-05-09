@@ -1,0 +1,32 @@
+{
+  "path": "/home/dolores/tiago_ws/src/full_body_nav_mpc/submodules/2.5D-Navigation/data",
+  "k_attraction_base": 0.005,
+  "k_repulsion_base": 0.00002,
+  "k_attraction_joints": 0.2,
+  "k_repulsion_joints": 0.01,
+  "k_repulsion_robot_joints": 0.005,
+  "k_safety_joints": 0.2,
+  "k_update_joints": 0.2,
+  "k_orientation": 0.02,
+  "k_orientation_from_base": 0.0,
+  "obstacle_threshold": 1.5,
+  "manipulator": true,
+  "dof": 7,
+  "center_activation_safety": 0.8,
+  "metersperwaypoint": 0.2,
+  "max_iterations": 500,
+  "convergence_distance": 0.02,
+  "safe_config": { "q1": 0.72, "q2": -0.9, "q3": -0.88, "q4": 1.94, "q5": -1.2, "q6": 1.37, "q7": 0.0 },
+  "traversablegraphfilename": "traversablegroundgraph_8floor.pkl",
+  "environmentsdffilename": "sdf_8floor.bin",
+  "robotsdffilename": "robot_sdf_002.bin",
+  "roboturdffilename": "/home/dolores/tiago_ws/src/full_body_nav_rl/urdf/tiago.urdf",
+  "joint_limits_path": "joints_limits.json",
+  "joints_names": ["arm_1_joint","arm_2_joint","arm_3_joint","arm_4_joint","arm_5_joint","arm_6_joint","arm_7_joint"],
+  "repulsive_joints": [3, 6],
+  "robot_points_base": [
+    [0.0, 0.0, 0.0],
+    [0.0, 0.0, 0.5],
+    [0.0, 0.0, 0.8]
+  ]
+}
