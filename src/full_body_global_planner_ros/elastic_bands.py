@@ -64,7 +64,7 @@ class RobotKinematics:
         self.pitch = pitch
         self.joints_limits = {}
         ############## CONFIG #################################################################
-        urdf_file = '/home/rods/tiago_ws/src/full_body_nav/urdf/tiago_unitree.urdf'
+        urdf_file = '/home/dolores/tiago_ws/src/full_body_nav_rl/urdf/tiago.urdf'
         root_link = ['base_link']
         ee_link = "arm_7_joint"
         self.dof = 7

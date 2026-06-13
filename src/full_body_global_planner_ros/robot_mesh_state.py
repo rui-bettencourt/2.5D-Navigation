@@ -35,6 +35,16 @@ def quaternion_to_matrix(q):
     R4 = quaternion_matrix(q)  # 4x4
     return R4
 
+
+def joint_origin_transform(joint):
+    origin = getattr(joint, 'origin', None)
+    if origin is None:
+        return np.eye(4)
+
+    rpy = getattr(origin, 'rpy', None) or [0.0, 0.0, 0.0]
+    xyz = getattr(origin, 'xyz', None) or [0.0, 0.0, 0.0]
+    return T_from_rpy_xyz(rpy, xyz)
+
 class Pose(object):
     def __init__(self, position=[0.0, 0.0, 0.0], orientation=0.0, joints={}):
         self.x = position[0]
@@ -93,7 +103,7 @@ class RobotMeshState(object):
             urdf_paths = [
                 '/home/rods/tiago_ws/src/full_body_nav/urdf/tiago_ouster.urdf',
                 '/home/rods/tiago_ws/src/full_body_nav/urdf/tiago.urdf',
-                '/home/rods/tiago_ws/src/full_body_nav/urdf/tiago_unitree.urdf'
+                '/home/dolores/tiago_ws/src/full_body_nav_rl/urdf/tiago.urdf'
             ]
             
             urdf_loaded = False
@@ -249,7 +259,7 @@ class RobotMeshState(object):
             parent_T = poses[parent]
             for j in children.get(parent, []):
                 # origin transform
-                T_origin = T_from_rpy_xyz(j.origin.rpy, j.origin.xyz)
+                T_origin = joint_origin_transform(j)
                 # joint motion (θ or d)
                 T_motion = np.eye(4)
                 if j.type in ('revolute', 'continuous'):
@@ -560,9 +570,11 @@ class RobotMeshState(object):
             time.sleep(0.1)
 
         # Get joint origin (translation and rotation from URDF)
-        origin_translation = np.array(joint.origin.xyz)
+        origin = getattr(joint, 'origin', None)
+        origin_translation = np.array(getattr(origin, 'xyz', [0.0, 0.0, 0.0]))
+        origin_rpy = getattr(origin, 'rpy', [0.0, 0.0, 0.0])
         origin_rotation = quaternion_matrix(
-            quaternion_from_euler(*joint.origin.rpy)
+            quaternion_from_euler(*origin_rpy)
         )[:3, :3]
 
         if joint.type == 'revolute' or joint.type == 'continuous':
