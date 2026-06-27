@@ -52,6 +52,7 @@ public:
         for (int i : repulsive_joint_indices_) repulsive_joint_indices_set_.insert(i);
     }
     void setRobotBasePoints(const std::vector<Vec3>& pts) { robot_points_base_ = pts; }
+    void useManipulator(bool use_manipulator) { use_manipulator_ = use_manipulator; }
 
     inline bool hasRobot() const { return static_cast<bool>(robot_); }
     inline int  dof() const      { return dof_; }
@@ -96,6 +97,7 @@ private:
     double center_activation_safety;
     double radius_joint;
     int    number_points_robot;
+    bool   use_manipulator_ = true;
 
     std::mutex sdf_mutex_;
 

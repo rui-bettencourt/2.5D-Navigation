@@ -40,6 +40,9 @@ class RobotKinematics:
 
         # Define the kinematic chain using ikpy
         self.joint7_chain = pk.build_serial_chain_from_urdf(open(urdf_file).read(), ee_link)
+        # --- NEW: Build the serial chain for the head ---
+        self.head_chain = pk.build_serial_chain_from_urdf(open(urdf_file).read(), "head_2_link")
+
         # self.joint7_chain.print_tree()
         ubs = self.joint7_chain.high.numpy()
         lbs = self.joint7_chain.low.numpy()
@@ -72,14 +75,25 @@ class RobotKinematics:
         self.joint3_chain = self.joint3_chain.to(dtype=dtype, device=device)
         self.joint2_chain = self.joint2_chain.to(dtype=dtype, device=device)
         self.joint1_chain = self.joint1_chain.to(dtype=dtype, device=device)
-
-
+        self.head_chain = self.head_chain.to(dtype=dtype, device=device) # <-- Add this line
 
 
     def forward_kinematics(self, joints_angles):
         angles = np.append((self.num_links-7) * [0.0], joints_angles)
         angles = torch.tensor(angles, dtype=torch.float64).to(device)
         fk_results = self.joint7_chain.forward_kinematics(angles, end_only=False)
+        
+        # --- NEW: Compute head kinematics and merge dictionaries ---
+        # Get the number of actuated joints in the head chain and set them all to 0.0
+        head_num_joints = len(self.head_chain.high.cpu().numpy())
+        head_angles = torch.zeros(head_num_joints, dtype=torch.float64).to(device)
+        head_fk = self.head_chain.forward_kinematics(head_angles, end_only=False)
+        
+        # Merge head links into the main fk_results dictionary
+        for link_name, transform in head_fk.items():
+            if link_name not in fk_results:
+                fk_results[link_name] = transform
+                
         return fk_results
 
     # def get_arm_endpoints(self, local_frame=False):

@@ -353,6 +353,10 @@ Row ElasticBandPlanner::thread_waypoint(int i, RobotKinematics& rk)
         // Eigen::VectorXd total_torques = Eigen::VectorXd::Zero(dof_);
         // for (int j = 0; j < dof_; ++j) total_torques += tau_list[j];
         // --- Keep inner loop SERIAL ---
+        if(use_manipulator_ == false){
+            new_wp.segment(6, dof_) = q_cur;  // do not update joints, just keep current
+            return new_wp;
+        }
         Eigen::VectorXd total_torques = Eigen::VectorXd::Zero(dof_);
         for (int j = 0; j < dof_; ++j) {
             auto tau = thread_joint(j+1, prev_positions[j], cur_positions[j], next_positions[j], q_cur, rk, i, static_cast<int>(path_matrix.rows()));

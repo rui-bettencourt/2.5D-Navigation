@@ -3,6 +3,7 @@ import csv
 import numpy as np
 import json
 import os, sys
+import time
 
 # import other created files
 try:
@@ -104,6 +105,7 @@ class MeshNav(object):
         self.EBAND_CPP.initialize(sdf_bin_path, robot_sdf_bin_path)
         self.EBAND_CPP.setRepulsiveJointIndices(self.repulsive_joints)
         self.EBAND_CPP.set_safe_config(self.safe_config, num_joints=self.dof)
+        self.EBAND_CPP.useManipulator(self.use_manipulator)
         # Debug: print the safe configuration that was set on the C++ EBAND planner
         try:
             print(f"Safe config set (num_joints={self.dof}): {self.safe_config}", flush=True)
@@ -181,30 +183,42 @@ if __name__ == '__main__':
     #start manip open 'q1': 0.24536540610839241, 'q2': 0.08151408666845633, 'q3': -0.056760050298209824, 'q4': 0.12295132317415515, 'q5': -2.074212027237278, 'q6': 0.18358833735206717, 'q7': 0.0}
     #start person avoidance
     #[-0.16452785718282203, -1.2666020972563956, 1.6379030207586271]
-    start = {'x': -0.16452785718282203, 'y': -1.2666020972563956, 'z': 0.0,
+    # start = {'x': -0.16452785718282203, 'y': -1.2666020972563956, 'z': 0.0,
+    start= {'x': -11.78, 'y': -7.21, 'z': 0.0,
+         'roll': 0.0, 'pitch': 0.0, 'yaw': 2.66,
+         'q1': 2.56, 'q2': -0.27, 'q3': -3.11, 'q4': 0.60, 'q5': -1.58, 'q6': -0.01, 'q7': -1.57}
+
+    
     #start = {'x': -0.99, 'y': -0.92, 'z': 0.0,
-         'roll': 0.0, 'pitch': 0.0, 'yaw': 0.0,
+        #  'roll': 0.0, 'pitch': 0.0, 'yaw': 0.0,
          #'q1': 0.49997891452238863, 'q2': -1.3399987452510393, 'q3': -0.48000630350043716, 'q4': 1.939944987749467, 'q5': -1.489913471550803, 'q6': 1.3700503991114767, 'q7': 0.0}
         # arm to the side for the door
         #'q1': 0.24536540610839241, 'q2': 0.08151408666845633, 'q3': -0.056760050298209824, 'q4': 0.12295132317415515, 'q5': -2.074212027237278, 'q6': 0.18358833735206717, 'q7': 0.0}     
         # arm up for shelf
-        'q1': 1.6, 'q2': 0.02, 'q3': -3.20, 'q4': 0.99, 'q5': -1.7, 'q6': -0.11, 'q7': 0.0}     
+        # 'q1': 1.6, 'q2': 0.02, 'q3': -3.20, 'q4': 0.99, 'q5': -1.7, 'q6': -0.11, 'q7': 0.0}     
         # arm lock ness
         #'q1': 1.6100128159474758,  'q2': -0.9300216018679532, 'q3': -3.14011767198285, 'q4': 2.2860616638758073, 'q5': -1.4611383590959146, 'q6': 0.08223813763811383, 'q7': 0.0}
     #goal [-0.13158763131980655, 2.6294367929957643, 3.109611631010219]
-    goal = {'x': -0.13158763131980655, 'y': 2.629, 'z': 0.0,
-            'roll': 0.0, 'pitch': 0.0, 'yaw': 3.109,
-            #'q1': 0.479990879731243, 'q2': 0.41994541710764083, 'q3': -1.61002823971667, 'q4': 1.4400446978232526, 'q5': 0.4801257301862268, 'q6': -0.2232519581801205, 'q7': -0.62}
-            'q1': 1.6, 'q2': 0.02, 'q3': -3.20, 'q4': 0.99, 'q5': -1.7, 'q6': -0.11, 'q7': 0.0}
+    # goal = {'x': -0.13158763131980655, 'y': 2.629, 'z': 0.0,
+    #         'roll': 0.0, 'pitch': 0.0, 'yaw': 3.109,
+    goal = {'x': -16.2, 'y': -3.6, 'z': 0.0,
+            'roll': 0.0, 'pitch': 0.0, 'yaw': 0.0,
+            # for joints 0.4799,0.4201,-1.6100,1.4400,0.4784,-0.2190,-0.0009
+            'q1': 0.25, 'q2': 0.45, 'q3': -2.0, 'q4': 1.75, 'q5': -0.56, 'q6': 0.22, 'q7': 0.0}
 
+    
     # goal = {'x': -15.3, 'y': -6.5, 'z': 0.0,
     #         'roll': 0.0, 'pitch': 0.0, 'yaw': 1.57,
     #         'q1': 0.15, 'q2': 0.95, 'q3': -2.89, 'q4': 0.96, 'q5': 1.18, 'q6': -0.89, 'q7': -0.62}
     
+    time_start = time.time()
     path = mn.plan(start, goal)
+    print("Time to plan is ", time.time()-time_start)
     
     # Save the path to CSV file for visualization with plot_path.py
-    output_path = '/home/dolores/tiago_ws/src/full_body_nav_mpc/submodules/2.5D-Navigation/data/planned_path.csv'
+    # output_path = '/home/dolores/tiago_ws/src/full_body_nav_mpc/submodules/2.5D-Navigation/data/planned_path.csv'
+    output_path = '/home/dolores/tiago_ws/src/full_body_nav_mpc/submodules/2.5D-Navigation/data/door.csv'
+
     mn.save_path(path, output_path)
     
     print(path)

@@ -163,7 +163,13 @@ PYBIND11_MODULE(elastic_band_planner_cpp, m) {
              &ElasticBandPlanner::setDynamicSafety,
              py::arg("enabled") = true,
              py::arg("center_activation_safety") = 0.8,
-             "Enable dynamic safety weighting and set its center along the path.");
+             "Enable dynamic safety weighting and set its center along the path.")
+
+        // Enable/disable the use of the manipulator in the optimization
+        .def("useManipulator",
+             &ElasticBandPlanner::useManipulator,
+             py::arg("use_manipulator") = true,
+             "Enable the use of the manipulator in the optimization.");
 
     m.doc() = "Elastic band planner with voxel SDF integration (Robot URDF/joint configuration exposed).";
 }

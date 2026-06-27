@@ -49,6 +49,10 @@ class MeshNav(object):
             #     if key.startswith('q'):
             #         joint_poses.append(pose[key])
             # conf_bb = self.RM.simulate_move_joints(conf_bb, self.joint_names[1:], joint_poses) # move the joints
+            # --- NEW: Inject head joints dynamically so you don't need them in the CSV ---
+            pose['head_1_joint'] = 0.0
+            pose['head_2_joint'] = 0.0
+
             meshes = self.RM.update_robot_arm_bbs(pose, move_base = True, local_frame = False)
 
             # mesh= self.RM.convert_bbs_to_mesh(conf_bb)
